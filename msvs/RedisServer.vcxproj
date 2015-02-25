@@ -221,6 +221,7 @@
     <ClCompile Include="..\src\sort.c" />
     <ClCompile Include="..\src\sparkline.c" />
     <ClCompile Include="..\src\syncio.c" />
+    <ClCompile Include="..\src\threadpool.c" />
     <ClCompile Include="..\src\t_hash.c" />
     <ClCompile Include="..\src\t_list.c" />
     <ClCompile Include="..\src\t_set.c" />
@@ -256,6 +257,7 @@
     <ClInclude Include="..\src\solarisfixes.h" />
     <ClInclude Include="..\src\sparkline.h" />
     <ClInclude Include="..\src\testhelp.h" />
+    <ClInclude Include="..\src\threadpool.h" />
     <ClInclude Include="..\src\util.h" />
     <ClInclude Include="..\src\version.h" />
     <ClInclude Include="..\src\ziplist.h" />
