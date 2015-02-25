@@ -842,6 +842,27 @@ int main(int argc, const char **argv) {
             free(cmd);
         }
 
+		if (test_is_selected("zscore") || test_is_selected("zincrby"))
+		{
+			len = redisFormatCommand(&cmd, "ZADD mysortedset __rand_int__ element:__rand_int__");
+			benchmark("ZADD (needed to benchmark ZSCORE,ZINCRBY)", cmd, len);
+			free(cmd);
+		}
+
+		if (test_is_selected("zscore"))
+		{
+			len = redisFormatCommand(&cmd, "ZSCORE mysortedset element:__rand_int__");
+			benchmark("ZSCORE", cmd, len);
+			free(cmd);
+		}
+
+		if (test_is_selected("zincrby"))
+		{
+			len = redisFormatCommand(&cmd, "ZINCRBY mysortedset 3.0 element:__rand_int__");
+			benchmark("ZINCRBY", cmd, len);
+			free(cmd);
+		}
+
         if (test_is_selected("lrange") ||
             test_is_selected("lrange_100") ||
             test_is_selected("lrange_300") ||
