@@ -60,6 +60,7 @@
 typedef long long mstime_t; /* millisecond time type. */
 
 #include "ae.h"      /* Event driven programming library */
+#include "threadpool.h"
 #include "sds.h"     /* Dynamic safe strings */
 #include "dict.h"    /* Hash tables */
 #include "adlist.h"  /* Linked lists */
@@ -400,6 +401,11 @@ typedef long long mstime_t; /* millisecond time type. */
 
 /* Get the first bind addr or NULL */
 #define REDIS_BIND_ADDR (server.bindaddr_count ? server.bindaddr[0] : NULL)
+
+/* Threads */
+#define REDIS_THREADPOOL_DEFAULT_SIZE 8
+#define REDIS_THREADPOOL_MAX_SIZE 1024
+#define REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE 1024
 
 /* Using the following macro you can run code inside serverCron() with the
  * specified period, specified in milliseconds.
@@ -879,6 +885,12 @@ struct redisServer {
     int assert_line;
     int bug_report_start; /* True if bug report header was already logged. */
     int watchdog_period;  /* Software watchdog period in ms. 0 = off */
+
+	/* Threading */
+	threadpool_t *tpool;
+	int threadpool_size;
+	//pthread_mutex_t *lock;
+	//int locking_mode;        /* if this is 0, locking should be unnecessary */
 };
 
 typedef struct pubsubPattern {

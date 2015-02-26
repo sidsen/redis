@@ -1442,6 +1442,7 @@ void initServerConfig(void) {
     server.lua_timedout = 0;
     server.next_client_id = 1; /* Client IDs, start from 1 .*/
     server.loading_process_events_interval_bytes = (1024*1024*2);
+	server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
 
     updateLRUClock();
     resetServerSaveParams();
@@ -1848,6 +1849,15 @@ void initServer(void) {
         }
     }
 
+	//if (server.threadpool_size == -1)
+	//if ((server.threadpool_size = (getNumCPUs() * 2)) < REDIS_THREADPOOL_DEFAULT_SIZE)
+	//	server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
+	redisLog(REDIS_NOTICE, "Starting %d worker threads with a threadpool queue of size %d.", server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE);
+	server.tpool = threadpool_create(server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE, 0); // THREDIS TODO - queue size should be configurable
+	//server.lock = zmalloc(sizeof(pthread_mutex_t));
+	//pthread_mutex_init(server.lock, NULL);
+	//server.locking_mode = 0;
+
     /* 32 bit instances are limited to 4GB of address space, so if there is
      * no explicit limit in the user provided configuration we set a limit
      * at 3 GB using maxmemory with 'noeviction' policy'. This avoids
@@ -2098,6 +2108,33 @@ void call(redisClient *c, int flags) {
     server.stat_numcommands++;
 }
 
+void callCommandAndResetClient(redisClient *c) {
+	/** thread start */
+	/* call the actual command */
+	call(c, REDIS_CALL_FULL);
+
+	/* let the response be sent to the client */
+	//pthread_mutex_lock(server.lock);
+	//if (listLength(server.ready_keys))
+	//	handleClientsBlockedOnLists();
+	//pthread_mutex_unlock(server.lock);
+
+	/* We are in a thread. Create a timeEvent (which will run in the
+	* main loop) to check if there are more pipelined commands to
+	* process. */
+	//pthread_mutex_lock(ref_lock);
+	//c->refcount++;
+	//pthread_mutex_unlock(ref_lock);
+	//pthread_mutex_lock(server.el->lock);
+	//c->time_event_id = aeCreateTimeEvent(server.el, 0, timeEventProcessInputBufferHandler, (void *)c, NULL);
+	//pthread_mutex_unlock(server.el->lock);
+
+	/* reset client and unlock */
+	resetClient(c);
+	//pthread_mutex_unlock(c->lock);
+	/** thread finish */
+}
+
 /* If this function gets called we already read a whole
  * command, arguments are in the client argv/argc fields.
  * processCommand() execute the command or prepare the
@@ -2251,10 +2288,25 @@ int processCommand(redisClient *c) {
     {
         queueMultiCommand(c);
         addReply(c,shared.queued);
-    } else {
-        call(c,REDIS_CALL_FULL);
-        if (listLength(server.ready_keys))
-            handleClientsBlockedOnLists();
+	}
+	else {
+		redisCommandProc *p = c->cmd->proc;
+		if (p == zaddCommand || p == zrankCommand ||
+			p == zincrbyCommand) {
+			//pthread_mutex_lock(ref_lock);
+			//c->refcount++;
+			//pthread_mutex_unlock(ref_lock);
+			//server.locking_mode++;
+			threadpool_add(server.tpool, (void(*)(void *)) callCommandAndResetClient, (void *)c, 0);
+			//return REDIS_ADDED_TO_THREAD;
+		}
+		else {
+			call(c, REDIS_CALL_FULL);
+			if (listLength(server.ready_keys)) {
+				redisAssert(0);
+				handleClientsBlockedOnLists();
+			}
+		}
     }
     return REDIS_OK;
 }
