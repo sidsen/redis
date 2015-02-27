@@ -23,8 +23,8 @@
 /* IOCP-based ae.c module  */
 
 #include <string.h>
-#include "ae.h"
 #include "win32_Interop/win32fixes.h"
+#include "ae.h"
 #include "zmalloc.h"
 #include "adlist.h"
 #include "win32_Interop/win32_wsiocp.h"

@@ -65,7 +65,7 @@ redisClient *createClient(int fd) {
         if (server.tcpkeepalive)
             anetKeepAlive(NULL,fd,server.tcpkeepalive);
         if (aeCreateFileEvent(server.el,fd,AE_READABLE,
-            readQueryFromClient, c) == AE_ERR)
+			clientReadHandler, c) == AE_ERR)
         {
 #ifdef WIN32_IOCP
             aeWinCloseSocket(fd);
@@ -116,6 +116,13 @@ redisClient *createClient(int fd) {
     listSetMatchMethod(c->pubsub_patterns,listMatchObjects);
     if (fd != -1) listAddNodeTail(server.clients,c);
     initClientMultiState(c);
+	c->lock = zmalloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(c->lock, NULL);
+	c->busy = 0;
+	c->ref_lock = zmalloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(c->ref_lock, NULL);
+	c->refcount = 0;
+
     return c;
 }
 
@@ -653,11 +660,15 @@ void replicationHandleMasterDisconnection(void) {
     if (server.masterhost != NULL) disconnectSlaves();
 }
 
-void freeClient(redisClient *c) {
+void deallocateClient(redisClient *c) {
     listNode *ln;
 
     /* If this is marked as current client unset it */
     if (server.current_client == c) server.current_client = NULL;
+
+	/* Delete timeEvent if any */
+	if (c->time_event_id)
+		aeDeleteTimeEvent(server.el, c->time_event_id);
 
     /* If it is our master that's beging disconnected we should make sure
      * to cache the state to try a partial resynchronization later.
@@ -774,7 +785,24 @@ void freeClient(redisClient *c) {
     zfree(c->argv);
     freeClientMultiState(c);
     sdsfree(c->peerid);
-    zfree(c);
+	pthread_mutex_unlock(c->lock); /* just in case */
+	pthread_mutex_destroy(c->lock);
+	zfree(c->lock);
+	pthread_mutex_destroy(c->ref_lock);
+	zfree(c->ref_lock);
+	zfree(c);
+}
+
+void freeClient(redisClient *c) {
+	aeDeleteFileEvent(server.el, c->fd, AE_READABLE); /* stop reading right away */
+	if (c->refcount <= 1)
+		deallocateClient(c);
+	else {
+		pthread_mutex_lock(c->ref_lock);
+		c->refcount--;
+		pthread_mutex_unlock(c->ref_lock);
+		pthread_mutex_unlock(c->lock);
+	}
 }
 
 /* Schedule a client to free it at a safe time in the serverCron() function.
@@ -851,6 +879,12 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     listNode *ln;
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(mask);
+
+	/* an addReply* at the beginning of a long-running command,
+	* e.g. EXEC would block here on a writable event, so we use a
+	* trylock here, if it fails, we can always get it next time. */
+	if (pthread_mutex_trylock(c->lock))
+		return;
 
 #ifndef _WIN32
 	if (c->flags & REDIS_MASTER) {
@@ -933,7 +967,7 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 		if (!(c->flags & REDIS_MASTER)) c->lastinteraction = server.unixtime;
     }
 #endif
-
+	pthread_mutex_unlock(c->lock);
 }
 
 #else
@@ -1023,12 +1057,16 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 
 /* resetClient prepare the client to process the next command */
 void resetClient(redisClient *c) {
+	redisAssertWithInfo(c, NULL, c->refcount > 0);
     freeClientArgv(c);
     c->reqtype = 0;
     c->multibulklen = 0;
     c->bulklen = -1;
     /* We clear the ASKING flag as well if we are not inside a MULTI. */
     if (!(c->flags & REDIS_MULTI)) c->flags &= (~REDIS_ASKING);
+	pthread_mutex_lock(c->ref_lock);
+	c->refcount--;
+	pthread_mutex_unlock(c->ref_lock);
 }
 
 int processInlineBuffer(redisClient *c) {
@@ -1246,13 +1284,21 @@ int processMultibulkBuffer(redisClient *c) {
 void processInputBuffer(redisClient *c) {
     /* Keep processing while there is something in the input buffer */
     while(sdslen(c->querybuf)) {
-        /* Immediately abort if the client is in the middle of something. */
-        if (c->flags & REDIS_BLOCKED) return;
+		/* Immediately abort if the client is in the middle of something. */
+		if (c->flags & REDIS_BLOCKED) {
+			c->busy = 0;
+			pthread_mutex_unlock(c->lock);
+			return;
+		}
 
         /* REDIS_CLOSE_AFTER_REPLY closes the connection once the reply is
          * written to the client. Make sure to not let the reply grow after
          * this flag has been set (i.e. don't process more commands). */
-        if (c->flags & REDIS_CLOSE_AFTER_REPLY) return;
+		if (c->flags & REDIS_CLOSE_AFTER_REPLY) {
+			c->busy = 0;
+			pthread_mutex_unlock(c->lock);
+			return;
+		}
 
         /* Determine request type when unknown. */
         if (!c->reqtype) {
@@ -1273,21 +1319,56 @@ void processInputBuffer(redisClient *c) {
 
         /* Multibulk processing could see a <= 0 length. */
         if (c->argc == 0) {
+			pthread_mutex_lock(c->ref_lock);
+			c->refcount++; /* because resetClient will decrement it */
+			pthread_mutex_unlock(c->ref_lock);
             resetClient(c);
         } else {
             /* Only reset the client when the command was executed. */
-            if (processCommand(c) == REDIS_OK)
-                resetClient(c);
+			if (processCommand(c) != REDIS_ADDED_TO_THREAD) {
+				pthread_mutex_lock(c->ref_lock);
+				c->refcount++;
+				pthread_mutex_unlock(c->ref_lock);
+				resetClient(c);
+			}
+			else {
+				/* at this point there may still be more pipelined
+				* commands to process in querybuf. We leave this
+				* loop without unlocking, and a timedEvent will be
+				* scheduled when the thread is done which will
+				* re-enter this function and process remaining
+				* commands, if any, or unlock. Important implication
+				* here is that pipelined commands are certainly not
+				* going to be atomic! */
+				return;
+			}
         }
     }
+	c->busy = 0;
+	pthread_mutex_unlock(c->lock);
 }
 
-void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
-    redisClient *c = (redisClient*) privdata;
+void clientReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
+	redisClient *c = privdata;
+	REDIS_NOTUSED(el);
+	REDIS_NOTUSED(mask);
+
+	int rc = pthread_mutex_trylock(c->lock);
+	/* if trylock fails, simply carry on, until next time */
+	if (!rc) {
+		if (c->busy) {
+			pthread_mutex_unlock(c->lock);
+			return;
+		}
+		c->busy = 1;
+		readQueryFromClient(privdata);
+		c->busy = 0;
+	}
+}
+
+void readQueryFromClient(redisClient *c) {
     int nread, readlen;
     size_t qblen;
-    REDIS_NOTUSED(el);
-    REDIS_NOTUSED(mask);
 
     server.current_client = c;
     readlen = REDIS_IOBUF_LEN;
@@ -1308,7 +1389,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     qblen = sdslen(c->querybuf);
     if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
     c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
-    nread = read(fd, c->querybuf+qblen, readlen);
+    nread = read(c->fd, c->querybuf+qblen, readlen);
     if (nread == -1) {
         if (errno == EAGAIN) {
             nread = 0;
@@ -1327,7 +1408,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
 #ifdef WIN32_IOCP
-    aeWinReceiveDone(fd);
+    aeWinReceiveDone(c->fd);
 #endif
     if (nread) {
         sdsIncrLen(c->querybuf,nread);
@@ -1336,6 +1417,8 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         server.stat_net_input_bytes += nread;
     } else {
         server.current_client = NULL;
+		/* Client is not processed further, so we must unlock */
+		pthread_mutex_unlock(c->lock);
         return;
     }
     if (sdslen(c->querybuf) > server.client_max_querybuf_len) {

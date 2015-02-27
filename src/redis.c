@@ -607,6 +607,16 @@ dictType replScriptCacheDictType = {
     NULL                        /* val destructor */
 };
 
+/* locked keys hash table, mapping keys to client locks */
+dictType lockedKeysDictType = {
+	dictSdsHash,                /* hash function */
+	NULL,                       /* key dup */
+	NULL,                       /* val dup */
+	dictSdsKeyCompare,          /* key compare */
+	dictSdsDestructor,          /* key destructor */
+	NULL                        /* val destructor */
+};
+
 int htNeedsResize(dict *dict) {
     long long size, used;
 
@@ -933,11 +943,20 @@ void clientsCron(void) {
         listRotate(server.clients);
         head = listFirst(server.clients);
         c = listNodeValue(head);
-        /* The following functions do different service checks on the client.
-         * The protocol is that they return non-zero if the client was
-         * terminated. */
-        if (clientsCronHandleTimeout(c)) continue;
-        if (clientsCronResizeQueryBuffer(c)) continue;
+		if (!pthread_mutex_trylock(c->lock)) {
+			/* The following functions do different service checks on the client.
+			 * The protocol is that they return non-zero if the client was
+			 * terminated. */
+			if (clientsCronHandleTimeout(c)) {
+				pthread_mutex_unlock(c->lock);
+				continue;
+			}
+			if (clientsCronResizeQueryBuffer(c)) {
+				pthread_mutex_unlock(c->lock);
+				continue;
+			}
+			pthread_mutex_unlock(c->lock);
+		}
     }
 }
 
@@ -1099,9 +1118,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     /* We need to do a few operations on clients asynchronously. */
+	//TODO:HACK	
     clientsCron();
 
     /* Handle background operations on Redis databases. */
+	//TODO:HACK
     databasesCron();
 
     /* Start a scheduled AOF rewrite if this was requested by the user while
@@ -1784,6 +1805,9 @@ void initServer(void) {
         server.db[j].blocking_keys = dictCreate(&keylistDictType,NULL);
         server.db[j].ready_keys = dictCreate(&setDictType,NULL);
         server.db[j].watched_keys = dictCreate(&keylistDictType,NULL);
+		server.db[j].locked_keys = dictCreate(&lockedKeysDictType, NULL);
+		server.db[j].lock = zmalloc(sizeof(pthread_mutex_t));
+		pthread_mutex_init(server.db[j].lock, NULL);
         server.db[j].id = j;
         server.db[j].avg_ttl = 0;
     }
@@ -1815,6 +1839,7 @@ void initServer(void) {
 
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
+	//TODO:HACK
     if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         redisPanic("Can't create the serverCron time event.");
         exit(1);
@@ -1854,8 +1879,8 @@ void initServer(void) {
 	//	server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
 	redisLog(REDIS_NOTICE, "Starting %d worker threads with a threadpool queue of size %d.", server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE);
 	server.tpool = threadpool_create(server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE, 0); // THREDIS TODO - queue size should be configurable
-	//server.lock = zmalloc(sizeof(pthread_mutex_t));
-	//pthread_mutex_init(server.lock, NULL);
+	server.lock = zmalloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(server.lock, NULL);
 	//server.locking_mode = 0;
 
     /* 32 bit instances are limited to 4GB of address space, so if there is
@@ -2029,6 +2054,7 @@ void call(redisClient *c, int flags) {
     long long dirty, start, duration;
     int client_old_flags = c->flags;
 
+	pthread_mutex_lock(server.lock);
     /* Sent the command to clients in MONITOR mode, only if the commands are
      * not generated from reading an AOF. */
     if (listLength(server.monitors) &&
@@ -2043,7 +2069,9 @@ void call(redisClient *c, int flags) {
     redisOpArrayInit(&server.also_propagate);
     dirty = server.dirty;
     start = ustime();
+	pthread_mutex_unlock(server.lock);
     c->cmd->proc(c);
+	pthread_mutex_lock(server.lock);
     duration = ustime()-start;
     dirty = server.dirty-dirty;
     if (dirty < 0) dirty = 0;
@@ -2106,6 +2134,30 @@ void call(redisClient *c, int flags) {
         redisOpArrayFree(&server.also_propagate);
     }
     server.stat_numcommands++;
+	pthread_mutex_unlock(server.lock);
+}
+
+int timeEventProcessInputBufferHandler(aeEventLoop *el, long long id, void *clientData) {
+	redisClient *c = (redisClient *)clientData;
+	REDIS_NOTUSED(el);
+	REDIS_NOTUSED(id);
+
+	if (c->lock && !pthread_mutex_trylock(c->lock)) {
+		//server.locking_mode--;
+		//redisAssertWithInfo(c, NULL, server.locking_mode >= 0);
+
+		/* process next command, if any... */
+		processInputBuffer(c);
+		pthread_mutex_lock(c->ref_lock);
+		c->refcount--;
+		pthread_mutex_unlock(c->ref_lock);
+		return AE_NOMORE;
+	}
+	else
+		/* Try again at the earliest opportunity. (This should never
+		* nappen because this event is scheduled after the command is
+		* complete?) */
+		return 0;
 }
 
 void callCommandAndResetClient(redisClient *c) {
@@ -2114,24 +2166,28 @@ void callCommandAndResetClient(redisClient *c) {
 	call(c, REDIS_CALL_FULL);
 
 	/* let the response be sent to the client */
-	//pthread_mutex_lock(server.lock);
-	//if (listLength(server.ready_keys))
-	//	handleClientsBlockedOnLists();
-	//pthread_mutex_unlock(server.lock);
+	pthread_mutex_lock(server.lock);
+	if (listLength(server.ready_keys))
+		handleClientsBlockedOnLists();
+	pthread_mutex_unlock(server.lock);
 
 	/* We are in a thread. Create a timeEvent (which will run in the
-	* main loop) to check if there are more pipelined commands to
-	* process. */
-	//pthread_mutex_lock(ref_lock);
-	//c->refcount++;
-	//pthread_mutex_unlock(ref_lock);
-	//pthread_mutex_lock(server.el->lock);
-	//c->time_event_id = aeCreateTimeEvent(server.el, 0, timeEventProcessInputBufferHandler, (void *)c, NULL);
-	//pthread_mutex_unlock(server.el->lock);
+	 * main loop) to check if there are more pipelined commands to
+	 * process. */
+	pthread_mutex_lock(c->ref_lock);
+	c->refcount++;
+	pthread_mutex_unlock(c->ref_lock);
+	//TODO:HACK Putting this here instead of below seems to avoid break where resetclient below
+	// called while main thread processing new event from client.
+	resetClient(c);
+
+	pthread_mutex_lock(server.el->lock);
+	c->time_event_id = aeCreateTimeEvent(server.el, 0, timeEventProcessInputBufferHandler, (void *)c, NULL);
+	pthread_mutex_unlock(server.el->lock);
 
 	/* reset client and unlock */
-	resetClient(c);
-	//pthread_mutex_unlock(c->lock);
+	//resetClient(c);
+	pthread_mutex_unlock(c->lock);
 	/** thread finish */
 }
 
@@ -2293,19 +2349,19 @@ int processCommand(redisClient *c) {
 		redisCommandProc *p = c->cmd->proc;
 		if (p == zaddCommand || p == zrankCommand ||
 			p == zincrbyCommand) {
-			//pthread_mutex_lock(ref_lock);
-			//c->refcount++;
-			//pthread_mutex_unlock(ref_lock);
+			pthread_mutex_lock(c->ref_lock);
+			c->refcount++;
+			pthread_mutex_unlock(c->ref_lock);
 			//server.locking_mode++;
 			threadpool_add(server.tpool, (void(*)(void *)) callCommandAndResetClient, (void *)c, 0);
-			//return REDIS_ADDED_TO_THREAD;
+			return REDIS_ADDED_TO_THREAD;
 		}
 		else {
 			call(c, REDIS_CALL_FULL);
-			if (listLength(server.ready_keys)) {
-				redisAssert(0);
+			pthread_mutex_lock(server.lock);
+			if (listLength(server.ready_keys))
 				handleClientsBlockedOnLists();
-			}
+			pthread_mutex_lock(server.lock);
 		}
     }
     return REDIS_OK;
@@ -3307,6 +3363,65 @@ int freeMemoryIfNeeded(void) {
     latencyEndMonitor(latency);
     latencyAddSampleIfNeeded("eviction-cycle",latency);
     return REDIS_OK;
+}
+
+/* ================================= Locking ================================ */
+
+void lockKey(redisClient *c, robj *key) {
+	genericLockKey(c, key, 0);
+}
+
+int genericLockKey(redisClient *c, robj *key, int trylock) {
+	dictEntry *de;
+
+	//if (!server.locking_mode) return 0;
+
+	pthread_mutex_lock(c->db->lock);
+	de = dictFind(c->db->locked_keys, key->ptr);
+	if (!de) {
+		dictAdd(c->db->locked_keys, sdsdup(key->ptr), c->lock);
+		pthread_mutex_unlock(c->db->lock);
+	}
+	else {
+		pthread_mutex_t *lock = dictGetVal(de);
+
+		if (lock == c->lock) {
+			/* we are already holding this lock */
+			pthread_mutex_unlock(c->db->lock);
+			return 0;
+		}
+		else
+			pthread_mutex_unlock(c->db->lock);
+
+		if (trylock) {
+			redisAssert(0);
+			//struct timespec   ts;
+			//struct timeval    tp;
+			//if (gettimeofday(&tp, NULL))
+			//	redisPanic("gettimeofday failed, on Linux make sure the process has CAP_SYS_TIME");
+			//ts.tv_sec = tp.tv_sec;
+			//ts.tv_nsec = tp.tv_usec * 100000000; /* 100ms */
+			//if (pthread_mutex_timedlock(lock, &ts))
+			//	return 1;
+		}
+		else
+			pthread_mutex_lock(lock);
+
+		pthread_mutex_lock(c->db->lock);
+		dictReplace(c->db->locked_keys, sdsdup(key->ptr), c->lock);
+		pthread_mutex_unlock(c->db->lock);
+		pthread_mutex_unlock(lock);
+	}
+	return 0;
+}
+
+void unlockKey(redisClient *c, robj *key) {
+
+	//if (!server.locking_mode) return;
+
+	pthread_mutex_lock(c->db->lock);
+	dictDelete(c->db->locked_keys, key->ptr);
+	pthread_mutex_unlock(c->db->lock);
 }
 
 /* =================================== Main! ================================ */

@@ -78,6 +78,7 @@ typedef long long mstime_t; /* millisecond time type. */
 /* Error codes */
 #define REDIS_OK                0
 #define REDIS_ERR               -1
+#define REDIS_ADDED_TO_THREAD   1
 
 /* Static server configuration */
 #define REDIS_DEFAULT_HZ        10      /* Time interrupt calls/sec. */
@@ -403,7 +404,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_BIND_ADDR (server.bindaddr_count ? server.bindaddr[0] : NULL)
 
 /* Threads */
-#define REDIS_THREADPOOL_DEFAULT_SIZE 8
+#define REDIS_THREADPOOL_DEFAULT_SIZE 2
 #define REDIS_THREADPOOL_MAX_SIZE 1024
 #define REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE 1024
 
@@ -452,6 +453,8 @@ typedef struct redisDb {
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP) */
     dict *ready_keys;           /* Blocked keys that received a PUSH */
     dict *watched_keys;         /* WATCHED keys for MULTI/EXEC CAS */
+	dict *locked_keys;          /* Locked keys */
+	pthread_mutex_t *lock;      /* Protects locked_keys database */
     int id;
     long long avg_ttl;          /* Average TTL, just for stats */
 } redisDb;
@@ -547,6 +550,12 @@ typedef struct redisClient {
     dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
     list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
     sds peerid;             /* Cached peer ID. */
+
+	pthread_mutex_t *lock;      /* Only one thread works on client at a time */
+	int busy;
+	long long time_event_id;    /* aeCreateTimeEvent id */
+	pthread_mutex_t *ref_lock;  /* Controls when client is reset given concurrency */
+	int refcount;             
 
     /* Response buffer */
     int bufpos;
@@ -889,7 +898,7 @@ struct redisServer {
 	/* Threading */
 	threadpool_t *tpool;
 	int threadpool_size;
-	//pthread_mutex_t *lock;
+	pthread_mutex_t *lock;
 	//int locking_mode;        /* if this is 0, locking should be unnecessary */
 };
 
@@ -1018,7 +1027,8 @@ void processInputBuffer(redisClient *c);
 void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask);
 void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask);
 void acceptUnixHandler(aeEventLoop *el, int fd, void *privdata, int mask);
-void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask);
+void clientReadHandler(aeEventLoop *el, int fd, void *privdata, int mask);
+void readQueryFromClient(redisClient *c);
 void addReplyBulk(redisClient *c, robj *obj);
 void addReplyBulkCString(redisClient *c, char *s);
 void addReplyBulkCBuffer(redisClient *c, void *p, size_t len);
@@ -1340,6 +1350,13 @@ void scriptingInit(void);
 char *redisGitSHA1(void);
 char *redisGitDirty(void);
 uint64_t redisBuildId(void);
+
+/* Locking */
+void lockKey(redisClient *c, robj *key);
+int genericLockKey(redisClient *c, robj *key, int trylock);
+void unlockKey(redisClient *c, robj *key);
+//void lockKeys(redisClient *c, robj **keys, int n_keys);
+//void unlockKeys(redisClient *c, robj **keys, int n_keys);
 
 /* Commands prototypes */
 void authCommand(redisClient *c);

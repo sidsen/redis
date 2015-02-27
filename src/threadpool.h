@@ -52,7 +52,13 @@ typedef enum {
  * @param flags        Unused parameter.
  * @return a newly created thread pool or NULL
  */
-threadpool_t *threadpool_create(int thread_count, int queue_size, int flags);
+#ifdef __cplusplus
+extern "C" {
+#endif
+	threadpool_t *threadpool_create(int thread_count, int queue_size, int flags);
+#ifdef __cplusplus
+}
+#endif
 
 /**
  * @function threadpool_add
@@ -64,8 +70,14 @@ threadpool_t *threadpool_create(int thread_count, int queue_size, int flags);
  * @return 0 if all goes well, negative values in case of error (@see
  * threadpool_error_t for codes).
  */
-int threadpool_add(threadpool_t *pool, void (*routine)(void *),
-                   void *arg, int flags);
+#ifdef __cplusplus
+extern "C" {
+#endif
+	int threadpool_add(threadpool_t *pool, void(*routine)(void *),
+		void *arg, int flags);
+#ifdef __cplusplus
+}
+#endif
 
 /**
  * @function threadpool_destroy

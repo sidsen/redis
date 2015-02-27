@@ -36,7 +36,9 @@
   #include <sys/time.h>
   #include <unistd.h> 
   #include <poll.h>
+  #include <pthread.h>
 #else
+  #include "win32_Interop/win32fixes.h"
   #include <sys/types.h> 
   #include <sys/timeb.h>
   #include "..\..\src\win32_Interop\Win32_FDAPI.h"
@@ -91,6 +93,8 @@ aeEventLoop *aeCreateEventLoop(int setsize) {
      * vector with it. */
     for (i = 0; i < setsize; i++)
         eventLoop->events[i].mask = AE_NONE;
+	eventLoop->lock = zmalloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(eventLoop->lock, NULL);
     return eventLoop;
 
 err:
@@ -136,6 +140,8 @@ void aeDeleteEventLoop(aeEventLoop *eventLoop) {
     aeApiFree(eventLoop);
     zfree(eventLoop->events);
     zfree(eventLoop->fired);
+	pthread_mutex_destroy(eventLoop->lock);
+	zfree(eventLoop->lock);
     zfree(eventLoop);
 }
 
@@ -400,6 +406,8 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         aeTimeEvent *shortest = NULL;
         struct timeval tv, *tvp;
 
+		pthread_mutex_lock(eventLoop->lock);
+
         if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
             shortest = aeSearchNearestTimer(eventLoop);
         if (shortest) {
@@ -431,6 +439,8 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             }
         }
 
+		pthread_mutex_unlock(eventLoop->lock);
+
         numevents = aeApiPoll(eventLoop, tvp);
         for (j = 0; j < numevents; j++) {
             aeFileEvent *fe;
@@ -455,9 +465,11 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         }
     }
     /* Check time events */
-    if (flags & AE_TIME_EVENTS)
-        processed += processTimeEvents(eventLoop);
-
+	if (flags & AE_TIME_EVENTS) {
+		pthread_mutex_lock(eventLoop->lock);
+		processed += processTimeEvents(eventLoop);
+		pthread_mutex_unlock(eventLoop->lock);
+	}
     return processed; /* return the number of processed file/time events */
 }
 
