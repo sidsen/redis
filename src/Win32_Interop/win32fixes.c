@@ -190,6 +190,10 @@ int pthread_detach (pthread_t thread) {
     return 0; /* noop */
 }
 
+void pthread_exit(void *value_ptr) {
+	ExitThread(0);
+}
+
 pthread_t pthread_self(void) {
     return GetCurrentThreadId();
 }
@@ -328,6 +332,7 @@ int pthread_cond_signal(pthread_cond_t *cond) {
         /*
          * Signal only when there are waiters
          */
+		//TODO:HACK WHY DOESN'T THIS RELEASE THE SEMAPHORE REGARDLESS?
         if (have_waiters)
                 return ReleaseSemaphore(cond->sema, 1, NULL) ?
                         0 : GetLastError();
@@ -335,6 +340,39 @@ int pthread_cond_signal(pthread_cond_t *cond) {
                 return 0;
 }
 
+int pthread_cond_broadcast(pthread_cond_t *cond)
+{
+	// This is needed to ensure that <waiters_count_> and <was_broadcast_> are
+	// consistent relative to each other.
+	EnterCriticalSection(&cond->waiters_lock);
+	int have_waiters = 0;
+
+	if (cond->waiters > 0) {
+		// We are broadcasting, even if there is just one waiter...
+		// Record that we are broadcasting, which helps optimize
+		// <pthread_cond_wait> for the non-broadcast case.
+		cond->was_broadcast = 1;
+		have_waiters = 1;
+	}
+
+	if (have_waiters) {
+		// Wake up all the waiters atomically.
+		ReleaseSemaphore(cond->sema, cond->waiters, 0);
+
+		LeaveCriticalSection(&cond->waiters_lock);
+
+		// Wait for all the awakened threads to acquire the counting
+		// semaphore. 
+		WaitForSingleObject(cond->continue_broadcast, INFINITE);
+		// This assignment is okay, even without the <waiters_count_lock_> held 
+		// because no other waiter threads can wake up to access it.
+		cond->was_broadcast = 0;
+	}
+	else
+		LeaveCriticalSection(&cond->waiters_lock);
+
+	return 0;
+}
 
 /* Redis forks to perform background writing */
 /* fork() on unix will split process in two */

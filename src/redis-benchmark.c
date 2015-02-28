@@ -197,6 +197,8 @@ static void clientDone(client c) {
         return;
     }
     if (config.keepalive) {
+		//TODO:HACK
+		//fprintf(stderr, "Resetting the client\n");
         resetClient(c);
     } else {
         config.liveclients--;
@@ -216,6 +218,8 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(fd);
     REDIS_NOTUSED(mask);
+
+	//fprintf(stderr, "In read handler\n", c->pending);
 
     /* Calculate latency only for the first read event. This means that the
      * server already sent the reply and we need to parse it. Parsing overhead
@@ -248,6 +252,9 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         aeWinReceiveDone((int)c->context->fd);
 #endif
         while(c->pending) {
+			//TODO:HACK
+			//fprintf(stdout, "Got some replies!\n");
+
             if (redisGetReply(c->context,&reply) != REDIS_OK) {
                 fprintf(stderr,"Error: %s\n",c->context->errstr);
                 exit(1);
@@ -279,6 +286,9 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
                 if (config.requests_finished < config.requests)
                     config.latency[config.requests_finished++] = c->latency;
                 c->pending--;
+				//TODO:HACK
+				if (c->pending > 0)
+					fprintf(stderr, "Number of pending requests is %d\n", c->pending);
                 if (c->pending == 0) {
                     clientDone(c);
                     break;
@@ -288,6 +298,8 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
             }
         }
     }
+
+	//fprintf(stderr, "Leaving read handler\n", c->pending);
 }
 
 #ifdef _WIN32
@@ -295,11 +307,14 @@ static void writeHandlerDone(aeEventLoop *el, int fd, void *privdata, int nwritt
     aeWinSendReq *req = (aeWinSendReq *)privdata;
     client c = (client)req->client;
 
+	//fprintf(stderr, "In write handler done\n", c->pending);
+
     c->written += nwritten;
     if (sdslen(c->obuf) == c->written) {
         aeDeleteFileEvent(config.el,(int)c->context->fd,AE_WRITABLE);
         aeCreateFileEvent(config.el,(int)c->context->fd,AE_READABLE,readHandler,c);
     }
+	//fprintf(stderr, "Leaving write handler done\n", c->pending);
 }
 #endif
 
@@ -308,6 +323,8 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(fd);
     REDIS_NOTUSED(mask);
+
+	//fprintf(stderr, "In write handler\n", c->pending);
 
     /* Initialize request when nothing was written. */
     if (c->written == 0) {
@@ -326,12 +343,15 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (sdslen(c->obuf) > c->written) {
         void *ptr = c->obuf+c->written;
 #ifdef WIN32_IOCP
+		//fprintf(stderr, "Before aeWinSocketSend call\n");
         int result = aeWinSocketSend(c->context->fd,(char*)ptr,(int)(sdslen(c->obuf)-c->written), 
                                         el, c, NULL, writeHandlerDone);
+		//fprintf(stderr, "After aeWinSocketSend call\n");
         if (result == SOCKET_ERROR && errno != WSA_IO_PENDING) {
             if (errno != EPIPE)
                 fprintf(stderr, "Writing to socket %s\n", wsa_strerror(errno));
             freeClient(c);
+			fprintf(stderr, "Leaving write handler with error\n");
             return;
         }
 #else
@@ -349,6 +369,7 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         }
 #endif
     }
+	//fprintf(stderr, "Leaving write handler\n");
 }
 
 /* Create a benchmark client, configured to send the command passed as 'cmd' of

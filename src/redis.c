@@ -2162,6 +2162,10 @@ int timeEventProcessInputBufferHandler(aeEventLoop *el, long long id, void *clie
 
 void callCommandAndResetClient(redisClient *c) {
 	/** thread start */
+
+	/* Need to grab/release client lock from same thread (else undefined behavior) */
+	pthread_mutex_lock(c->lock);
+
 	/* call the actual command */
 	call(c, REDIS_CALL_FULL);
 
@@ -2347,8 +2351,7 @@ int processCommand(redisClient *c) {
 	}
 	else {
 		redisCommandProc *p = c->cmd->proc;
-		if (p == zaddCommand || p == zrankCommand ||
-			p == zincrbyCommand) {
+		if (p == zaddCommand || p == zrankCommand || p == zincrbyCommand) {
 			pthread_mutex_lock(c->ref_lock);
 			c->refcount++;
 			pthread_mutex_unlock(c->ref_lock);
@@ -2361,7 +2364,7 @@ int processCommand(redisClient *c) {
 			pthread_mutex_lock(server.lock);
 			if (listLength(server.ready_keys))
 				handleClientsBlockedOnLists();
-			pthread_mutex_lock(server.lock);
+			pthread_mutex_unlock(server.lock);
 		}
     }
     return REDIS_OK;

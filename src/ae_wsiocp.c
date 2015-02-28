@@ -289,14 +289,22 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
     int rc;
 	int mswait = (tvp == NULL) ? 100 : (tvp->tv_sec * 1000) + (tvp->tv_usec / 1000);
 
-    if (pGetQueuedCompletionStatusEx != NULL) {
-        /* first get an array of completion notifications */
-        rc = pGetQueuedCompletionStatusEx(state->iocp,
-                                        state->entries,
-                                        MAX_COMPLETE_PER_POLL,
-                                        &numComplete,
-                                        mswait,
-                                        FALSE);
+	if (pGetQueuedCompletionStatusEx != NULL) {
+		/* first get an array of completion notifications */
+		rc = pGetQueuedCompletionStatusEx(state->iocp,
+			state->entries,
+			MAX_COMPLETE_PER_POLL,
+			&numComplete,
+			mswait,
+			FALSE);
+		/*
+		if (!rc && GetLastError() != 258) {
+			fprintf(stderr, "Error in getcompletion status is %d\n", GetLastError());
+		}
+		else if (!rc && numComplete > 0) {
+			fprintf(stderr, "Getcompletion failed but returned %d entries\n", numComplete);
+		}
+		*/
     } else {
         /* need to get one at a time. Use first array element */
         rc = GetQueuedCompletionStatus(state->iocp,
@@ -328,6 +336,15 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
         }
     }
 
+	//TODO:HACK
+	/*
+	if (!rc && numComplete > 0)
+	{
+		LPOVERLAPPED_ENTRY entry = state->entries;
+		int rfd = (int)entry->lpCompletionKey;
+		aeApiAddEvent(eventLoop, rfd, AE_WRITABLE);
+	}
+	*/
     if (rc && numComplete > 0) {
         LPOVERLAPPED_ENTRY entry = state->entries;
         for (j = 0; j < numComplete && numevents < state->setsize; j++, entry++) {
@@ -336,6 +353,9 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
             sockstate = aeGetExistingSockState(state, rfd);
 
             if (sockstate != NULL) {
+				//TODO:HACK
+				pthread_mutex_lock(eventLoop->lock);
+
                 if ((sockstate->masks & LISTEN_SOCK) && entry->lpOverlapped != NULL) {
                     /* need to set event for listening */
                     aacceptreq *areq = (aacceptreq *)entry->lpOverlapped;
@@ -352,7 +372,10 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                     if (entry->lpOverlapped == &sockstate->ov_read) {
                         sockstate->masks &= ~CONNECT_PENDING;
                         /* enable read and write events for this connection */
+						//TODO:HACK
+						//pthread_mutex_lock(eventLoop->lock);
                         aeApiAddEvent(eventLoop, rfd, sockstate->masks);
+						//pthread_mutex_unlock(eventLoop->lock);
                     }
                 } else {
                     int matched = 0;
@@ -375,9 +398,15 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                                 DWORD written = 0;
                                 DWORD flags;
                                 WSAGetOverlappedResult(rfd, &areq->ov, &written, FALSE, &flags);
+								//TODO:HACK
+								pthread_mutex_unlock(eventLoop->lock);
                                 areq->proc(areq->eventLoop, rfd, &areq->req, (int)written);
+								pthread_mutex_lock(eventLoop->lock);
                             }
+							//TODO:HACK
+							//pthread_mutex_lock(eventLoop->lock);
                             sockstate->wreqs--;
+							//pthread_mutex_unlock(eventLoop->lock);
                             zfree(areq);
                             /* if no active write requests, set ready to write */
                             if (sockstate->wreqs == 0 && sockstate->masks & AE_WRITABLE) {
@@ -392,6 +421,9 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                         sockstate = NULL;
                     }
                 }
+
+				//TODO:HACK
+				pthread_mutex_unlock(eventLoop->lock);
             } else {
                 // no match for active connection.
                 // Try the closing list.

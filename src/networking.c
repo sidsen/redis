@@ -75,7 +75,9 @@ redisClient *createClient(int fd) {
             zfree(c);
             return NULL;
         }
-    }
+		//TODO:HACK
+		//aeCreateFileEvent(server.el, fd, AE_WRITABLE, sendReplyToClient, c); //  == AE_ERR);
+	}
 
     selectDb(c,0);
     c->id = server.next_client_id++;
@@ -145,11 +147,16 @@ int prepareClientToWrite(redisClient *c) {
     if ((c->flags & REDIS_MASTER) &&
         !(c->flags & REDIS_MASTER_FORCE_REPLY)) return REDIS_ERR;
     if (c->fd <= 0) return REDIS_ERR; /* Fake client */
-    if (c->bufpos == 0 && listLength(c->reply) == 0 &&
-        (c->replstate == REDIS_REPL_NONE ||
-         c->replstate == REDIS_REPL_ONLINE) &&
-        aeCreateFileEvent(server.el, c->fd, AE_WRITABLE,
-        sendReplyToClient, c) == AE_ERR) return REDIS_ERR;
+	if (c->bufpos == 0 && listLength(c->reply) == 0 &&
+		(c->replstate == REDIS_REPL_NONE ||
+		c->replstate == REDIS_REPL_ONLINE)) {
+		//TODO:HACK
+		int rc;
+		pthread_mutex_lock(server.el->lock);
+		rc = aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c);
+		pthread_mutex_unlock(server.el->lock);
+		if (rc == AE_ERR) return REDIS_ERR;
+	}
     return REDIS_OK;
 }
 
@@ -835,18 +842,24 @@ void sendReplyBufferDone(aeEventLoop *el, int fd, void *privdata, int written) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(fd);
 
+	pthread_mutex_lock(c->lock);
+
     if (c->bufpos == offset) {
         c->bufpos = 0;
         c->sentlen = 0;
     }
     if (c->bufpos == 0 && listLength(c->reply) == 0) {
+		//TODO:HACK
+		pthread_mutex_lock(el->lock);
         aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
+		pthread_mutex_unlock(el->lock);
 
         /* Close connection after entire reply has been sent. */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY) {
             freeClientAsync(c);
         }
     }
+	pthread_mutex_unlock(c->lock);
 }
 
 void sendReplyListDone(aeEventLoop *el, int fd, void *privdata, int written) {
@@ -856,17 +869,23 @@ void sendReplyListDone(aeEventLoop *el, int fd, void *privdata, int written) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(fd);
 
+	pthread_mutex_lock(c->lock);
+
     decrRefCount(o);
 
     if (c->bufpos == 0 && listLength(c->reply) == 0) {
         c->sentlen = 0;
+		//TODO:HACK
+		pthread_mutex_lock(el->lock);
         aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
+		pthread_mutex_unlock(el->lock);
 
         /* Close connection after entire reply has been sent. */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY){
             freeClientAsync(c);
         }
     }
+	pthread_mutex_unlock(c->lock);
 }
 
 void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -883,8 +902,10 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 	/* an addReply* at the beginning of a long-running command,
 	* e.g. EXEC would block here on a writable event, so we use a
 	* trylock here, if it fails, we can always get it next time. */
-	if (pthread_mutex_trylock(c->lock))
-		return;
+	//TODO:HACK FORCE LOCK INSTEAD OF TRYING
+	//if (pthread_mutex_trylock(c->lock))
+	//	return;
+	pthread_mutex_lock(c->lock);
 
 #ifndef _WIN32
 	if (c->flags & REDIS_MASTER) {
@@ -894,7 +915,7 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         while (listLength(c->reply)) {
             listDelNode(c->reply,listFirst(c->reply));
         }
-        c->lastinteraction = time(NULL);
+        c->lastinteraction = time(NULL); 
         return;
     }
 #endif
@@ -1332,6 +1353,8 @@ void processInputBuffer(redisClient *c) {
 				resetClient(c);
 			}
 			else {
+				/*TODO:HACK THIS IS BOGUS, CAN'T RELEASE LOCK FROM OTHER THREAD;
+				JUST NEED TO ENSURE LINEARIZABILITY */
 				/* at this point there may still be more pipelined
 				* commands to process in querybuf. We leave this
 				* loop without unlocking, and a timedEvent will be
@@ -1340,7 +1363,9 @@ void processInputBuffer(redisClient *c) {
 				* commands, if any, or unlock. Important implication
 				* here is that pipelined commands are certainly not
 				* going to be atomic! */
+				pthread_mutex_unlock(c->lock);
 				return;
+				//return;
 			}
         }
     }

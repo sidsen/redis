@@ -334,7 +334,7 @@ typedef long long mstime_t; /* millisecond time type. */
 /* Zip structure related defaults */
 #define REDIS_HASH_MAX_ZIPLIST_ENTRIES 512
 #define REDIS_HASH_MAX_ZIPLIST_VALUE 64
-#define REDIS_LIST_MAX_ZIPLIST_ENTRIES 512
+#define REDIS_LIST_MAX_ZIPLIST_ENTRIES 0 // 512
 #define REDIS_LIST_MAX_ZIPLIST_VALUE 64
 #define REDIS_SET_MAX_INTSET_ENTRIES 512
 #define REDIS_ZSET_MAX_ZIPLIST_ENTRIES 128
@@ -404,7 +404,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_BIND_ADDR (server.bindaddr_count ? server.bindaddr[0] : NULL)
 
 /* Threads */
-#define REDIS_THREADPOOL_DEFAULT_SIZE 2
+#define REDIS_THREADPOOL_DEFAULT_SIZE 1
 #define REDIS_THREADPOOL_MAX_SIZE 1024
 #define REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE 1024
 

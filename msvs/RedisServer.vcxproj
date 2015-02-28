@@ -221,7 +221,7 @@
     <ClCompile Include="..\src\sort.c" />
     <ClCompile Include="..\src\sparkline.c" />
     <ClCompile Include="..\src\syncio.c" />
-    <ClCompile Include="..\src\threadpool.cpp" />
+    <ClCompile Include="..\src\threadpool.c" />
     <ClCompile Include="..\src\t_hash.c" />
     <ClCompile Include="..\src\t_list.c" />
     <ClCompile Include="..\src\t_set.c" />

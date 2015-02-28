@@ -439,9 +439,13 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             }
         }
 
+		//TODO:HACK TEMP MOVE BELOW APIPOLL
 		pthread_mutex_unlock(eventLoop->lock);
 
         numevents = aeApiPoll(eventLoop, tvp);
+
+		//pthread_mutex_unlock(eventLoop->lock);
+
         for (j = 0; j < numevents; j++) {
             aeFileEvent *fe;
             int mask = eventLoop->fired[j].mask;
