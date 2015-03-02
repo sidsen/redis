@@ -1878,7 +1878,7 @@ void initServer(void) {
 	//if ((server.threadpool_size = (getNumCPUs() * 2)) < REDIS_THREADPOOL_DEFAULT_SIZE)
 	//	server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
 	redisLog(REDIS_NOTICE, "Starting %d worker threads with a threadpool queue of size %d.", server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE);
-	server.tpool = threadpool_create(server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE, 0); // THREDIS TODO - queue size should be configurable
+	server.tpool = threadpool_create(server.threadpool_size + 1, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE, 0); // THREDIS TODO - queue size should be configurable
 	server.lock = zmalloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(server.lock, NULL);
 	//server.locking_mode = 0;
@@ -2166,14 +2166,28 @@ void callCommandAndResetClient(redisClient *c) {
 	/* Need to grab/release client lock from same thread (else undefined behavior) */
 	pthread_mutex_lock(c->lock);
 
+	if (c->bstate.count > 0) {
+		robj* key = c->bstate.commands[0].argv[1];
+		lockKey(c, key);
+		/* If we are in this function, then we will always have a batch request */
+		execBatch(c);
+		unlockKey(c, key);
+		discardBatch(c);
+	}
+	else
+		execBatch(c);
+
 	/* call the actual command */
-	call(c, REDIS_CALL_FULL);
+	//call(c, REDIS_CALL_FULL);
 
 	/* let the response be sent to the client */
 	pthread_mutex_lock(server.lock);
 	if (listLength(server.ready_keys))
 		handleClientsBlockedOnLists();
 	pthread_mutex_unlock(server.lock);
+
+	//TODO:HACK TRY SENDING IMMEDIATELY
+	//sendReplyToClient(server.el, c->fd, c, 0);
 
 	/* We are in a thread. Create a timeEvent (which will run in the
 	 * main loop) to check if there are more pipelined commands to
@@ -2185,12 +2199,14 @@ void callCommandAndResetClient(redisClient *c) {
 	// called while main thread processing new event from client.
 	resetClient(c);
 
-	pthread_mutex_lock(server.el->lock);
-	c->time_event_id = aeCreateTimeEvent(server.el, 0, timeEventProcessInputBufferHandler, (void *)c, NULL);
-	pthread_mutex_unlock(server.el->lock);
+	//TODO:HACK TEMPORARY REMOVE (PIPELINING WON'T WORK!)
+	//pthread_mutex_lock(server.el->lock);
+	//c->time_event_id = aeCreateTimeEvent(server.el, 0, timeEventProcessInputBufferHandler, (void *)c, NULL);
+	//pthread_mutex_unlock(server.el->lock);
 
 	/* reset client and unlock */
 	//resetClient(c);
+	c->done = TRUE;
 	pthread_mutex_unlock(c->lock);
 	/** thread finish */
 }
@@ -2352,12 +2368,24 @@ int processCommand(redisClient *c) {
 	else {
 		redisCommandProc *p = c->cmd->proc;
 		if (p == zaddCommand || p == zrankCommand || p == zincrbyCommand) {
-			pthread_mutex_lock(c->ref_lock);
-			c->refcount++;
-			pthread_mutex_unlock(c->ref_lock);
+			/* Always use a batch, even if it'sa batch of 1 */
+			queueBatchCommand(c);
+
+			//pthread_mutex_lock(c->ref_lock);
+			//c->refcount++;
+			//pthread_mutex_unlock(c->ref_lock);
 			//server.locking_mode++;
-			threadpool_add(server.tpool, (void(*)(void *)) callCommandAndResetClient, (void *)c, 0);
-			return REDIS_ADDED_TO_THREAD;
+			//c->done = FALSE;
+			//pthread_mutex_unlock(c->lock);			
+			//threadpool_add(server.tpool, (void(*)(void *)) callCommandAndResetClient, (void *)c, 0);
+			
+			//while (!c->done)
+			//{
+			//	;
+			//}
+			//pthread_mutex_lock(c->lock);
+			return REDIS_OK;
+			//return REDIS_ADDED_TO_THREAD;
 		}
 		else {
 			call(c, REDIS_CALL_FULL);
@@ -3382,19 +3410,14 @@ int genericLockKey(redisClient *c, robj *key, int trylock) {
 	pthread_mutex_lock(c->db->lock);
 	de = dictFind(c->db->locked_keys, key->ptr);
 	if (!de) {
-		dictAdd(c->db->locked_keys, sdsdup(key->ptr), c->lock);
+		pthread_mutex_t* lock = zmalloc(sizeof(pthread_mutex_t));
+		pthread_mutex_init(lock, NULL);
+		dictAdd(c->db->locked_keys, sdsdup(key->ptr), lock);
+		pthread_mutex_lock(lock);
 		pthread_mutex_unlock(c->db->lock);
 	}
 	else {
 		pthread_mutex_t *lock = dictGetVal(de);
-
-		if (lock == c->lock) {
-			/* we are already holding this lock */
-			pthread_mutex_unlock(c->db->lock);
-			return 0;
-		}
-		else
-			pthread_mutex_unlock(c->db->lock);
 
 		if (trylock) {
 			redisAssert(0);
@@ -3409,11 +3432,9 @@ int genericLockKey(redisClient *c, robj *key, int trylock) {
 		}
 		else
 			pthread_mutex_lock(lock);
-
-		pthread_mutex_lock(c->db->lock);
-		dictReplace(c->db->locked_keys, sdsdup(key->ptr), c->lock);
+		/* TODO: Replace the lock with a new lock */
+		//dictReplace(c->db->locked_keys, sdsdup(key->ptr), c->lock);
 		pthread_mutex_unlock(c->db->lock);
-		pthread_mutex_unlock(lock);
 	}
 	return 0;
 }
@@ -3421,10 +3442,24 @@ int genericLockKey(redisClient *c, robj *key, int trylock) {
 void unlockKey(redisClient *c, robj *key) {
 
 	//if (!server.locking_mode) return;
-
+	dictEntry *de;
+	de = dictFind(c->db->locked_keys, key->ptr);
+	/* We are the ones holding this lock (check this?) */
+	if (!de)
+		redisAssert(de);
+	pthread_mutex_t *lock = dictGetVal(de);
+	pthread_mutex_unlock(lock);
+	/* TODO: Clean up our lock (any new locker will have used a new lock); needs to be done while holding db lock */
+	/*
 	pthread_mutex_lock(c->db->lock);
-	dictDelete(c->db->locked_keys, key->ptr);
+	de = dictFind(c->db->locked_keys, key->ptr);
+	if (de && (lock == dictGetVal(de))) {
+		dictDelete(c->db->locked_keys, key->ptr);
+	}
+	pthread_mutex_destroy(lock);
+	zfree(lock);
 	pthread_mutex_unlock(c->db->lock);
+	*/
 }
 
 /* =================================== Main! ================================ */

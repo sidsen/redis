@@ -555,7 +555,11 @@ typedef struct redisClient {
 	int busy;
 	long long time_event_id;    /* aeCreateTimeEvent id */
 	pthread_mutex_t *ref_lock;  /* Controls when client is reset given concurrency */
-	int refcount;             
+	int refcount;
+	multiState bstate;          /* Batch state for issuing pipelined requests to threadpool */
+	//TODO:HACK
+	HANDLE doneEvent;
+	int done;
 
     /* Response buffer */
     int bufpos;
@@ -1105,6 +1109,13 @@ void touchWatchedKey(redisDb *db, robj *key);
 void touchWatchedKeysOnFlush(int dbid);
 void discardTransaction(redisClient *c);
 void flagTransaction(redisClient *c);
+/* BATCHING (for pipelining) */
+void initClientBatchState(redisClient *c);
+void freeClientMultiState(redisClient *c);
+void queueBatchCommand(redisClient *c);
+void discardBatch(redisClient *c);
+void execBatch(redisClient *c);
+
 
 /* Redis object implementation */
 void decrRefCount(robj *o);
@@ -1216,6 +1227,7 @@ void zsetConvert(robj *zobj, int encoding);
 
 /* Core functions */
 int freeMemoryIfNeeded(void);
+void callCommandAndResetClient(redisClient *c);
 int processCommand(redisClient *c);
 void setupSignalHandlers(void);
 struct redisCommand *lookupCommand(sds name);

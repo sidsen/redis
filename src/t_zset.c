@@ -1183,7 +1183,7 @@ void zaddGenericCommand(redisClient *c, int incr) {
     robj *curobj;
     double score = 0, *scores = NULL, curscore = 0.0;
     int j, elements = (c->argc-2)/2;
-    int added = 0, updated = 0;
+	int added = 0, updated = 0, keyLocked = 0;
 
     if (c->argc % 2) {
         addReply(c,shared.syntaxerr);
@@ -1199,7 +1199,8 @@ void zaddGenericCommand(redisClient *c, int incr) {
             != REDIS_OK) goto cleanup;
     }
 
-	lockKey(c, key);
+	//lockKey(c, key);
+	//keyLocked = 1;
 
     /* Lookup the key and create the sorted set if does not exist. */
     zobj = lookupKeyWrite(c->db,key);
@@ -1304,7 +1305,9 @@ void zaddGenericCommand(redisClient *c, int incr) {
         addReplyLongLong(c,added);
 
 cleanup:
-	unlockKey(c, key);
+	if (keyLocked) {
+		//unlockKey(c, key);
+	}
     zfree(scores);
     if (added || updated) {
         signalModifiedKey(c->db,key);

@@ -282,8 +282,6 @@ int aeWinSocketSend(int fd, char *buf, int len,
 }
 
 
-
-
 /* for non-blocking connect with IOCP */
 int aeWinSocketConnect(int fd, const SOCKADDR_STORAGE *ss) {
     const GUID wsaid_connectex = WSAID_CONNECTEX;

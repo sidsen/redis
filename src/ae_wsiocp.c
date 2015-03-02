@@ -22,6 +22,7 @@
 
 /* IOCP-based ae.c module  */
 
+#include "redis.h"
 #include <string.h>
 #include "win32_Interop/win32fixes.h"
 #include "ae.h"
@@ -353,9 +354,6 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
             sockstate = aeGetExistingSockState(state, rfd);
 
             if (sockstate != NULL) {
-				//TODO:HACK
-				pthread_mutex_lock(eventLoop->lock);
-
                 if ((sockstate->masks & LISTEN_SOCK) && entry->lpOverlapped != NULL) {
                     /* need to set event for listening */
                     aacceptreq *areq = (aacceptreq *)entry->lpOverlapped;
@@ -388,33 +386,58 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                             eventLoop->fired[numevents].mask = AE_READABLE;
                             numevents++;
                         }
-                    } else if (sockstate->wreqs > 0 && entry->lpOverlapped != NULL) {
-                        /* should be write complete. Get results */
-                        asendreq *areq = (asendreq *)entry->lpOverlapped;
-                        matched = removeMatchFromList(&sockstate->wreqlist, areq);
-                        if (matched) {
-                            /* call write complete callback so buffers can be freed */
-                            if (areq->proc != NULL) {
-                                DWORD written = 0;
-                                DWORD flags;
-                                WSAGetOverlappedResult(rfd, &areq->ov, &written, FALSE, &flags);
+                    } else {
+						//TODO:HACK
+						/*
+						redisClient* c = NULL;
+						if (entry->lpOverlapped != NULL) {
+							c = (redisClient*)(((asendreq *)entry->lpOverlapped)->req.client);
+							if (c != NULL)
+								pthread_mutex_lock(c->lock);
+							else
+								c = NULL;
+						}
+						*/
+						pthread_mutex_lock(eventLoop->lock);
+						if (sockstate->wreqs > 0 && entry->lpOverlapped != NULL) {
+							/* should be write complete. Get results */
+							asendreq *areq = (asendreq *)entry->lpOverlapped;
+							matched = removeMatchFromList(&sockstate->wreqlist, areq);
+							if (matched) {
+								//TODO:HACK
+								//pthread_mutex_lock(eventLoop->lock);
+								sockstate->wreqs--;
+								//pthread_mutex_unlock(eventLoop->lock);
+								/* if no active write requests, set ready to write */
+								if (sockstate->wreqs == 0 && sockstate->masks & AE_WRITABLE) {
+									eventLoop->fired[numevents].fd = rfd;
+									eventLoop->fired[numevents].mask = AE_WRITABLE;
+									numevents++;
+								}
+								//if (c != NULL)
+								pthread_mutex_unlock(eventLoop->lock);
+
+								/* call write complete callback so buffers can be freed */
+								if (areq->proc != NULL) {
+									DWORD written = 0;
+									DWORD flags;
+									WSAGetOverlappedResult(rfd, &areq->ov, &written, FALSE, &flags);
+									//TODO:HACK
+									//pthread_mutex_unlock(eventLoop->lock);
+									areq->proc(areq->eventLoop, rfd, &areq->req, (int)written);
+									//pthread_mutex_lock(eventLoop->lock);
+								}
+								zfree(areq);
+							}
+							else if (1) { // c != NULL) {
 								//TODO:HACK
 								pthread_mutex_unlock(eventLoop->lock);
-                                areq->proc(areq->eventLoop, rfd, &areq->req, (int)written);
-								pthread_mutex_lock(eventLoop->lock);
-                            }
+							}
+						}
+						else if (1) { // c != NULL) {
 							//TODO:HACK
-							//pthread_mutex_lock(eventLoop->lock);
-                            sockstate->wreqs--;
-							//pthread_mutex_unlock(eventLoop->lock);
-                            zfree(areq);
-                            /* if no active write requests, set ready to write */
-                            if (sockstate->wreqs == 0 && sockstate->masks & AE_WRITABLE) {
-                                eventLoop->fired[numevents].fd = rfd;
-                                eventLoop->fired[numevents].mask = AE_WRITABLE;
-                                numevents++;
-                            }
-                        }
+							pthread_mutex_unlock(eventLoop->lock);
+						}
                     }
                     if (matched == 0) {
                         /* redisLog */printf("Sec:%lld Unknown complete (closed) on %d\n", gettimeofdaysecs(NULL), rfd);
@@ -423,7 +446,7 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                 }
 
 				//TODO:HACK
-				pthread_mutex_unlock(eventLoop->lock);
+				//pthread_mutex_unlock(eventLoop->lock);
             } else {
                 // no match for active connection.
                 // Try the closing list.

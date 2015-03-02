@@ -321,3 +321,120 @@ void unwatchCommand(redisClient *c) {
     c->flags &= (~REDIS_DIRTY_CAS);
     addReply(c,shared.ok);
 }
+
+
+/* ================================ BATCH (PIPELINE -> THREADPOOL) ============================== */
+
+/* Client state initialization for MULTI/EXEC */
+void initClientBatchState(redisClient *c) {
+	c->bstate.commands = NULL;
+	c->bstate.count = 0;
+}
+
+/* Release all the resources associated with batch state */
+void freeClientBatchState(redisClient *c) {
+	int j;
+
+	for (j = 0; j < c->bstate.count; j++) {
+		int i;
+		multiCmd *mc = c->bstate.commands + j;
+
+		for (i = 0; i < mc->argc; i++)
+			decrRefCount(mc->argv[i]);
+		zfree(mc->argv);
+	}
+	zfree(c->bstate.commands);
+}
+
+/* Add a new command into the batch commands queue */
+void queueBatchCommand(redisClient *c) {
+	multiCmd *mc;
+	int j;
+
+	c->bstate.commands = zrealloc(c->bstate.commands,
+		sizeof(multiCmd)*(c->bstate.count + 1));
+	mc = c->bstate.commands + c->bstate.count;
+	mc->cmd = c->cmd;
+	mc->argc = c->argc;
+	mc->argv = zmalloc(sizeof(robj*)*c->argc);
+	memcpy(mc->argv, c->argv, sizeof(robj*)*c->argc);
+	for (j = 0; j < c->argc; j++)
+		incrRefCount(mc->argv[j]);
+	c->bstate.count++;
+}
+
+void discardBatch(redisClient *c) {
+	freeClientBatchState(c);
+	initClientBatchState(c);
+	//c->flags &= ~(REDIS_MULTI | REDIS_DIRTY_CAS | REDIS_DIRTY_EXEC);
+	//unwatchAllKeys(c);
+}
+
+void execBatch(redisClient *c) {
+	int j;
+	robj **orig_argv;
+	int orig_argc;
+	struct redisCommand *orig_cmd;
+
+	//if (!(c->flags & REDIS_MULTI)) {
+	//	addReplyError(c, "EXEC without MULTI");
+	//	return;
+	//}
+
+	/* Check if we need to abort the EXEC because:
+	* 1) Some WATCHed key was touched.
+	* 2) There was a previous error while queueing commands.
+	* A failed EXEC in the first case returns a multi bulk nil object
+	* (technically it is not an error but a special behavior), while
+	* in the second an EXECABORT error is returned. */
+	//if (c->flags & (REDIS_DIRTY_CAS | REDIS_DIRTY_EXEC)) {
+	//	addReply(c, c->flags & REDIS_DIRTY_EXEC ? shared.execaborterr :
+	//		shared.nullmultibulk);
+	//	discardTransaction(c);
+	//	goto handle_monitor;
+	//}
+
+	/* Exec all the queued commands */
+	//unwatchAllKeys(c); /* Unwatch ASAP otherwise we'll waste CPU cycles */
+	orig_argv = c->argv;
+	orig_argc = c->argc;
+	orig_cmd = c->cmd;
+	//addReplyMultiBulkLen(c, c->bstate.count);
+	for (j = 0; j < c->bstate.count; j++) {
+		c->argc = c->bstate.commands[j].argc;
+		c->argv = c->bstate.commands[j].argv;
+		c->cmd = c->bstate.commands[j].cmd;
+
+		/* Propagate a MULTI request once we encounter the first write op.
+		* This way we'll deliver the MULTI/..../EXEC block as a whole and
+		* both the AOF and the replication link will have the same consistency
+		* and atomicity guarantees. */
+		//if (!must_propagate && !(c->cmd->flags & REDIS_CMD_READONLY)) {
+		//	execCommandPropagateMulti(c);
+		//	must_propagate = 1;
+		//}
+
+		call(c, REDIS_CALL_FULL);
+
+		/* Commands may alter argc/argv, restore bstate. */
+		c->bstate.commands[j].argc = c->argc;
+		c->bstate.commands[j].argv = c->argv;
+		c->bstate.commands[j].cmd = c->cmd;
+	}
+	c->argv = orig_argv;
+	c->argc = orig_argc;
+	c->cmd = orig_cmd;
+	//discardBatch(c);
+	/* Make sure the EXEC command will be propagated as well if MULTI
+	* was already propagated. */
+	//if (must_propagate) server.dirty++;
+
+//handle_monitor:
+	/* Send EXEC to clients waiting data from MONITOR. We do it here
+	* since the natural order of commands execution is actually:
+	* MUTLI, EXEC, ... commands inside transaction ...
+	* Instead EXEC is flagged as REDIS_CMD_SKIP_MONITOR in the command
+	* table, and we do it here with correct ordering. */
+//	if (listLength(server.monitors) && !server.loading)
+//		replicationFeedMonitors(c, server.monitors, c->db->id, c->argv, c->argc);
+}

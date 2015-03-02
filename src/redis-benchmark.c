@@ -287,8 +287,8 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
                     config.latency[config.requests_finished++] = c->latency;
                 c->pending--;
 				//TODO:HACK
-				if (c->pending > 0)
-					fprintf(stderr, "Number of pending requests is %d\n", c->pending);
+				//if (c->pending > 0)
+				//	fprintf(stderr, "Number of pending requests is %d\n", c->pending);
                 if (c->pending == 0) {
                     clientDone(c);
                     break;

@@ -124,8 +124,23 @@ redisClient *createClient(int fd) {
 	c->ref_lock = zmalloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(c->ref_lock, NULL);
 	c->refcount = 0;
+	initClientBatchState(c);
+	//TODO:HACK
+	c->doneEvent = NULL;
+	c->done = TRUE;
 
     return c;
+}
+
+int delayedCreateFileEvent(aeEventLoop *el, long long id, void *clientData) {
+	redisClient *c = (redisClient *)clientData;
+	REDIS_NOTUSED(el);
+	REDIS_NOTUSED(id);
+
+	int rc;
+	rc = aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c);
+	//if (rc == AE_ERR) return REDIS_ERR;
+	return AE_NOMORE;
 }
 
 /* This function is called every time we are going to transmit new data
@@ -153,6 +168,7 @@ int prepareClientToWrite(redisClient *c) {
 		//TODO:HACK
 		int rc;
 		pthread_mutex_lock(server.el->lock);
+		//aeCreateTimeEvent(server.el, 0, delayedCreateFileEvent, (void *)c, NULL);
 		rc = aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c);
 		pthread_mutex_unlock(server.el->lock);
 		if (rc == AE_ERR) return REDIS_ERR;
@@ -850,9 +866,9 @@ void sendReplyBufferDone(aeEventLoop *el, int fd, void *privdata, int written) {
     }
     if (c->bufpos == 0 && listLength(c->reply) == 0) {
 		//TODO:HACK
-		pthread_mutex_lock(el->lock);
+		//pthread_mutex_lock(el->lock);
         aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
-		pthread_mutex_unlock(el->lock);
+		//pthread_mutex_unlock(el->lock);
 
         /* Close connection after entire reply has been sent. */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY) {
@@ -876,9 +892,9 @@ void sendReplyListDone(aeEventLoop *el, int fd, void *privdata, int written) {
     if (c->bufpos == 0 && listLength(c->reply) == 0) {
         c->sentlen = 0;
 		//TODO:HACK
-		pthread_mutex_lock(el->lock);
+		//pthread_mutex_lock(el->lock);
         aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
-		pthread_mutex_unlock(el->lock);
+		//pthread_mutex_unlock(el->lock);
 
         /* Close connection after entire reply has been sent. */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY){
@@ -903,9 +919,9 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 	* e.g. EXEC would block here on a writable event, so we use a
 	* trylock here, if it fails, we can always get it next time. */
 	//TODO:HACK FORCE LOCK INSTEAD OF TRYING
-	//if (pthread_mutex_trylock(c->lock))
-	//	return;
-	pthread_mutex_lock(c->lock);
+	if (pthread_mutex_trylock(c->lock))
+		return;
+	//pthread_mutex_lock(c->lock);
 
 #ifndef _WIN32
 	if (c->flags & REDIS_MASTER) {
@@ -1353,6 +1369,7 @@ void processInputBuffer(redisClient *c) {
 				resetClient(c);
 			}
 			else {
+				redisAssert(0);
 				/*TODO:HACK THIS IS BOGUS, CAN'T RELEASE LOCK FROM OTHER THREAD;
 				JUST NEED TO ENSURE LINEARIZABILITY */
 				/* at this point there may still be more pipelined
@@ -1363,12 +1380,25 @@ void processInputBuffer(redisClient *c) {
 				* commands, if any, or unlock. Important implication
 				* here is that pipelined commands are certainly not
 				* going to be atomic! */
-				pthread_mutex_unlock(c->lock);
-				return;
+
+				//TODO:HACK
+				/* Continue queueing pipelined requests until the buffer has
+				   been processed. We will signal one thread to process all
+				   the requests serially, to preserve linearizability for this
+				   client. */
+				//pthread_mutex_unlock(c->lock);
+				//return;
 				//return;
 			}
         }
     }
+	/* If this is a batch request, queue it to a thread now */
+	//TODO:SID: ADD A FLAG TO KEEP TRACK OF A BATCH REQUEST
+	if (c->bstate.count > 0) {
+		//TODO:SID DO WE NEED TO INCREASE REFCOUNT HERE?
+		c->done = FALSE;
+		threadpool_add(server.tpool, (void(*)(void *)) callCommandAndResetClient, (void *)c, 0);
+	}
 	c->busy = 0;
 	pthread_mutex_unlock(c->lock);
 }
