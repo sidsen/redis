@@ -919,9 +919,18 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 	* e.g. EXEC would block here on a writable event, so we use a
 	* trylock here, if it fails, we can always get it next time. */
 	//TODO:HACK FORCE LOCK INSTEAD OF TRYING
-	if (pthread_mutex_trylock(c->lock))
+	if (0) { //pthread_mutex_trylock(c->lock)) {
+		/* Need to requeue a write ready so we're called again later */
+		/* There is data to send so no other thread should be adding a file event
+		   concurrently, meaning we can avoid locking */
+		//pthread_mutex_lock(server.el->lock);
+		if (aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c) == AE_ERR) {
+			redisLog(REDIS_WARNING, "Failed to enable write on client socket (reply may not be sent!): %s");
+		}
+		//pthread_mutex_unlock(server.el->lock);
 		return;
-	//pthread_mutex_lock(c->lock);
+	}
+	pthread_mutex_lock(c->lock);
 
 #ifndef _WIN32
 	if (c->flags & REDIS_MASTER) {
@@ -1450,7 +1459,7 @@ void readQueryFromClient(redisClient *c) {
             nread = 0;
         } else {
 #ifdef _WIN32
-            redisLog(REDIS_VERBOSE, "Reading from client: %s",wsa_strerror(errno));
+            redisLog(REDIS_WARNING, "Reading from client: %s",wsa_strerror(errno));
 #else
             redisLog(REDIS_VERBOSE, "Reading from client: %s",strerror(errno));
 #endif

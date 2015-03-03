@@ -298,10 +298,10 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
 			&numComplete,
 			mswait,
 			FALSE);
-		/*
 		if (!rc && GetLastError() != 258) {
 			fprintf(stderr, "Error in getcompletion status is %d\n", GetLastError());
 		}
+		/*
 		else if (!rc && numComplete > 0) {
 			fprintf(stderr, "Getcompletion failed but returned %d entries\n", numComplete);
 		}

@@ -506,9 +506,9 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 				//TODO:HACK WAIT FOR ANY CONCURRENT READ TO COMPLETE
 				while (rClients->head) {
 					redisClient* c = (redisClient*)(rClients->head->value);
-					while (!c->done) {
-						;
-					}
+					//while (!c->done) {
+					//	;
+					//}
 					listDelNode(rClients, rClients->head);
 				}
 				listRelease(rClients);

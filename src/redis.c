@@ -2168,10 +2168,10 @@ void callCommandAndResetClient(redisClient *c) {
 
 	if (c->bstate.count > 0) {
 		robj* key = c->bstate.commands[0].argv[1];
-		lockKey(c, key);
+		//lockKey(c, key);
 		/* If we are in this function, then we will always have a batch request */
 		execBatch(c);
-		unlockKey(c, key);
+		//unlockKey(c, key);
 		discardBatch(c);
 	}
 	else
