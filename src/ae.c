@@ -469,8 +469,8 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
              * event removed an element that fired and we still didn't
              * processed, so we check if the event is still valid. */
             if (fe->mask & mask & AE_READABLE) {
+				rfired = 1;
 				if (procReads) {
-					rfired = 1;
 					fe->rfileProc(eventLoop, fd, fe->clientData, mask);
 					readProc++;
 					//TODO:HACK

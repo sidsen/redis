@@ -1878,7 +1878,7 @@ void initServer(void) {
 	//if ((server.threadpool_size = (getNumCPUs() * 2)) < REDIS_THREADPOOL_DEFAULT_SIZE)
 	//	server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
 	redisLog(REDIS_NOTICE, "Starting %d worker threads with a threadpool queue of size %d.", server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE);
-	server.tpool = threadpool_create(server.threadpool_size + 1, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE, 0); // THREDIS TODO - queue size should be configurable
+	server.tpool = threadpool_create(server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE, 0); // THREDIS TODO - queue size should be configurable
 	server.lock = zmalloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(server.lock, NULL);
 	//server.locking_mode = 0;
@@ -1897,7 +1897,7 @@ void initServer(void) {
     scriptingInit();
     slowlogInit();
     latencyMonitorInit();
-    bioInit();
+    //bioInit();
 }
 
 /* Populates the Redis Command Table starting from the hard coded list
@@ -2166,6 +2166,9 @@ void callCommandAndResetClient(redisClient *c) {
 	/* Need to grab/release client lock from same thread (else undefined behavior) */
 	pthread_mutex_lock(c->lock);
 
+	/* Disable sends for now; we will reenable them after processing the batch */
+	c->disableSend = 1;
+
 	if (c->bstate.count > 0) {
 		robj* key = c->bstate.commands[0].argv[1];
 		//lockKey(c, key);
@@ -2176,6 +2179,8 @@ void callCommandAndResetClient(redisClient *c) {
 	}
 	else
 		execBatch(c);
+
+	c->disableSend = 0;
 
 	/* call the actual command */
 	//call(c, REDIS_CALL_FULL);
@@ -2208,6 +2213,17 @@ void callCommandAndResetClient(redisClient *c) {
 	//resetClient(c);
 	c->done = TRUE;
 	pthread_mutex_unlock(c->lock);
+
+	/* Enable send to occur */
+	int rc;
+	pthread_mutex_lock(server.el->lock);
+	//aeCreateTimeEvent(server.el, 0, delayedCreateFileEvent, (void *)c, NULL);
+	rc = aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c);
+	pthread_mutex_unlock(server.el->lock);
+	if (rc == AE_ERR) {
+		redisLog(REDIS_WARNING, "Failed to post write event to socket");
+	}
+
 	/** thread finish */
 }
 

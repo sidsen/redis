@@ -58,6 +58,7 @@ typedef struct aeApiState {
     OVERLAPPED_ENTRY entries[MAX_COMPLETE_PER_POLL];
     list lookup[MAX_SOCKET_LOOKUP];
     list closing;
+	pthread_mutex_t* lock;
 } aeApiState;
 
 /* uses virtual FD as an index */
@@ -91,6 +92,9 @@ aeSockState *aeGetSockState(void *apistate, int fd) {
         sockState->wreqs = 0;
         sockState->reqs = NULL;
         memset(&sockState->wreqlist, 0, sizeof(sockState->wreqlist));
+		//TODO:HACK
+		sockState->lock = zmalloc(sizeof(pthread_mutex_t));
+		pthread_mutex_init(sockState->lock, NULL);
 
         if (listAddNodeHead(socklist, sockState) != NULL) {
             return sockState;
@@ -147,6 +151,7 @@ void aeDelSockState(void *apistate, aeSockState *sockState) {
 
     if (apistate == NULL) return;
 
+	pthread_mutex_lock(sockState->lock);
     if (sockState->wreqs == 0 &&
             (sockState->masks & (READ_QUEUED | CONNECT_PENDING | SOCKET_ATTACHED | CLOSE_PENDING)) == 0) {
         // see if in active list
@@ -154,12 +159,14 @@ void aeDelSockState(void *apistate, aeSockState *sockState) {
         socklist = &(((aeApiState *)apistate)->lookup[sindex]);
         if (removeMatchFromList(socklist, sockState) == 1) {
             zfree(sockState);
+			pthread_mutex_unlock(sockState->lock);
             return;
         }
-        // try closing list
+		// try closing list
         socklist = &(((aeApiState *)apistate)->closing);
         if (removeMatchFromList(socklist, sockState) == 1) {
             zfree(sockState);
+			pthread_mutex_unlock(sockState->lock);
             return;
         }
     } else {
@@ -172,6 +179,7 @@ void aeDelSockState(void *apistate, aeSockState *sockState) {
             listAddNodeHead(socklist, sockState);
         }
     }
+	pthread_mutex_unlock(sockState->lock);
 }
 
 /* Called by ae to initialize state */
@@ -201,6 +209,10 @@ static int aeApiCreate(aeEventLoop *eventLoop) {
     }
 
     state->setsize = eventLoop->setsize;
+	//TODO:HACK
+	state->lock = zmalloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(state->lock, NULL);
+
     eventLoop->apidata = state;
     /* initialize the IOCP socket code with state reference */
     aeWinInit(state, state->iocp, aeGetSockState, aeDelSockState);
@@ -224,12 +236,16 @@ static void aeApiFree(aeEventLoop *eventLoop) {
 /* monitor state changes for a socket */
 static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = (aeApiState *)eventLoop->apidata;
+	//TODO:HACK
+	pthread_mutex_lock(state->lock);
     aeSockState *sockstate = aeGetSockState(state, fd);
+	pthread_mutex_unlock(state->lock);
     if (sockstate == NULL) {
         errno = WSAEINVAL;
         return -1;
     }
 
+	pthread_mutex_lock(sockstate->lock);
     if (mask & AE_READABLE) {
         sockstate->masks |= AE_READABLE;
         if ((sockstate->masks & CONNECT_PENDING) == 0) {
@@ -256,6 +272,7 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
                                             &areq->ov) == 0) {
                     errno = GetLastError();
                     zfree(areq);
+					pthread_mutex_unlock(sockstate->lock);
                     return -1;
                 }
                 sockstate->wreqs++;
@@ -263,20 +280,26 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
             }
         }
     }
+	pthread_mutex_unlock(sockstate->lock);
     return 0;
 }
 
 /* stop monitoring state changes for a socket */
 static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = (aeApiState *)eventLoop->apidata;
+	//TODO:HACK
+	pthread_mutex_lock(state->lock);
     aeSockState *sockstate = aeGetExistingSockState(state, fd);
+	pthread_mutex_unlock(state->lock);
     if (sockstate == NULL) {
         errno = WSAEINVAL;
         return;
     }
 
+	pthread_mutex_lock(sockstate->lock);
     if (mask & AE_READABLE) sockstate->masks &= ~AE_READABLE;
     if (mask & AE_WRITABLE) sockstate->masks &= ~AE_WRITABLE;
+	pthread_mutex_unlock(sockstate->lock);
 }
 
 /* return array of sockets that are ready for read or write 
@@ -351,9 +374,15 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
         for (j = 0; j < numComplete && numevents < state->setsize; j++, entry++) {
             /* the competion key is the socket */
             int rfd = (int)entry->lpCompletionKey;
+			//TODO:HACK Need to protect the socket state of the event loop
+			pthread_mutex_lock(state->lock);
             sockstate = aeGetExistingSockState(state, rfd);
-
+			/* It's safe to unlock here because concurrent threads in the threadpool will 
+			   at most be adding sockets to the list */
+			pthread_mutex_unlock(state->lock);
             if (sockstate != NULL) {
+				/* Protect access to this specific socket */
+				pthread_mutex_lock(sockstate->lock);
                 if ((sockstate->masks & LISTEN_SOCK) && entry->lpOverlapped != NULL) {
                     /* need to set event for listening */
                     aacceptreq *areq = (aacceptreq *)entry->lpOverlapped;
@@ -370,10 +399,8 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                     if (entry->lpOverlapped == &sockstate->ov_read) {
                         sockstate->masks &= ~CONNECT_PENDING;
                         /* enable read and write events for this connection */
-						//TODO:HACK
-						//pthread_mutex_lock(eventLoop->lock);
+						//TODO:HACK CONSIDER UNLOCKING AND RELOCKING SOCKSTATE, SINCE WILL HAPPEN IN FUNC ANYWAY
                         aeApiAddEvent(eventLoop, rfd, sockstate->masks);
-						//pthread_mutex_unlock(eventLoop->lock);
                     }
                 } else {
                     int matched = 0;
@@ -398,7 +425,7 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
 								c = NULL;
 						}
 						*/
-						pthread_mutex_lock(eventLoop->lock);
+						//pthread_mutex_lock(eventLoop->lock);
 						if (sockstate->wreqs > 0 && entry->lpOverlapped != NULL) {
 							/* should be write complete. Get results */
 							asendreq *areq = (asendreq *)entry->lpOverlapped;
@@ -415,7 +442,7 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
 									numevents++;
 								}
 								//if (c != NULL)
-								pthread_mutex_unlock(eventLoop->lock);
+								//pthread_mutex_unlock(eventLoop->lock);
 
 								/* call write complete callback so buffers can be freed */
 								if (areq->proc != NULL) {
@@ -431,12 +458,12 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
 							}
 							else if (1) { // c != NULL) {
 								//TODO:HACK
-								pthread_mutex_unlock(eventLoop->lock);
+								//pthread_mutex_unlock(eventLoop->lock);
 							}
 						}
 						else if (1) { // c != NULL) {
 							//TODO:HACK
-							pthread_mutex_unlock(eventLoop->lock);
+							//pthread_mutex_unlock(eventLoop->lock);
 						}
                     }
                     if (matched == 0) {
@@ -444,18 +471,20 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                         sockstate = NULL;
                     }
                 }
-
+				pthread_mutex_unlock(sockstate->lock);
 				//TODO:HACK
 				//pthread_mutex_unlock(eventLoop->lock);
             } else {
                 // no match for active connection.
                 // Try the closing list.
+				//TODO:HACK NO NEED TO PROTECT THE CLOSING LIST SINCE THREADPOOL THREADS DON'T TOUCH IT
                 list *socklist = &(state->closing);
                 listNode *node;
                 node = listFirst(socklist);
                 while (node != NULL) {
                     sockstate = (aeSockState *)listNodeValue(node);
                     if (sockstate->fd == rfd) {
+						pthread_mutex_lock(sockstate->lock);
                         if (sockstate->masks & CONNECT_PENDING) {
                             /* check if connect complete */
                             if (entry->lpOverlapped == &sockstate->ov_read) {
@@ -472,6 +501,7 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                                 zfree(areq);
                             }
                         }
+						int delSockState = 0;
                         if (sockstate->wreqs == 0 &&
                             (sockstate->masks & (CONNECT_PENDING | READ_QUEUED | SOCKET_ATTACHED)) == 0) {
                             if ((sockstate->masks & CLOSE_PENDING) != 0) {
@@ -479,8 +509,14 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                                 sockstate->masks &= ~(CLOSE_PENDING);
                             }
                             // safe to delete sockstate
-                            aeDelSockState(state, sockstate);
+                            //aeDelSockState(state, sockstate);
+							delSockState = 1;
                         }
+						if (delSockState) {
+							pthread_mutex_lock(state->lock);
+							aeDelSockState(state, sockstate);
+							pthread_mutex_unlock(state->lock);
+						}
                         break;
                     }
                     node = listNextNode(node);

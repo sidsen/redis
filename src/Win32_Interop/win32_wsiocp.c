@@ -183,7 +183,9 @@ int aeWinAccept(int fd, struct sockaddr *sa, socklen_t *len) {
 
 /* after doing read caller needs to call done
  * so that we can continue to check for read events.
- * This is not necessary if caller will delete read events */
+ * This is not necessary if caller will delete read events.
+   Also, caller is responsible for any required locking 
+   (e.g. to protect socket state) */
 int aeWinReceiveDone(int fd) {
     aeSockState *sockstate;
     int result;

@@ -128,19 +128,32 @@ redisClient *createClient(int fd) {
 	//TODO:HACK
 	c->doneEvent = NULL;
 	c->done = TRUE;
+	c->disableSend = 0;
 
     return c;
 }
 
 int delayedCreateFileEvent(aeEventLoop *el, long long id, void *clientData) {
 	redisClient *c = (redisClient *)clientData;
-	REDIS_NOTUSED(el);
+	//REDIS_NOTUSED(el);
 	REDIS_NOTUSED(id);
 
+	//TODO:HACK TRY DIRECTLY CALLING SEND
+	if (!pthread_mutex_trylock(c->lock)) {
+		sendReplyToClient(el, c->fd, c, AE_WRITABLE);
+		pthread_mutex_unlock(c->lock);
+		return AE_NOMORE;
+	}
+	else {
+		return 0;
+	}
+
+	/*
 	int rc;
 	rc = aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c);
 	//if (rc == AE_ERR) return REDIS_ERR;
 	return AE_NOMORE;
+	*/
 }
 
 /* This function is called every time we are going to transmit new data
@@ -163,8 +176,10 @@ int prepareClientToWrite(redisClient *c) {
         !(c->flags & REDIS_MASTER_FORCE_REPLY)) return REDIS_ERR;
     if (c->fd <= 0) return REDIS_ERR; /* Fake client */
 	if (c->bufpos == 0 && listLength(c->reply) == 0 &&
+		!c->disableSend && 
 		(c->replstate == REDIS_REPL_NONE ||
 		c->replstate == REDIS_REPL_ONLINE)) {
+		/* Delay enabling the send until the input buffer has been fully processed */
 		//TODO:HACK
 		int rc;
 		pthread_mutex_lock(server.el->lock);
@@ -824,6 +839,7 @@ void freeClient(redisClient *c) {
 		pthread_mutex_lock(c->ref_lock);
 		c->refcount--;
 		pthread_mutex_unlock(c->ref_lock);
+		//TODO:HACK NEED TO CHECK FOR DOUBLE+ FREEING
 		pthread_mutex_unlock(c->lock);
 	}
 }
@@ -866,9 +882,9 @@ void sendReplyBufferDone(aeEventLoop *el, int fd, void *privdata, int written) {
     }
     if (c->bufpos == 0 && listLength(c->reply) == 0) {
 		//TODO:HACK
-		//pthread_mutex_lock(el->lock);
+		pthread_mutex_lock(el->lock);
         aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
-		//pthread_mutex_unlock(el->lock);
+		pthread_mutex_unlock(el->lock);
 
         /* Close connection after entire reply has been sent. */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY) {
@@ -879,28 +895,28 @@ void sendReplyBufferDone(aeEventLoop *el, int fd, void *privdata, int written) {
 }
 
 void sendReplyListDone(aeEventLoop *el, int fd, void *privdata, int written) {
-    aeWinSendReq *req = (aeWinSendReq *)privdata;
-    redisClient *c = (redisClient *)req->client;
-    robj *o = (robj *)req->data;
-    REDIS_NOTUSED(el);
-    REDIS_NOTUSED(fd);
+	aeWinSendReq *req = (aeWinSendReq *)privdata;
+	redisClient *c = (redisClient *)req->client;
+	robj *o = (robj *)req->data;
+	REDIS_NOTUSED(el);
+	REDIS_NOTUSED(fd);
 
 	pthread_mutex_lock(c->lock);
 
-    decrRefCount(o);
+	decrRefCount(o);
 
-    if (c->bufpos == 0 && listLength(c->reply) == 0) {
-        c->sentlen = 0;
+	if (c->bufpos == 0 && listLength(c->reply) == 0) {
+		c->sentlen = 0;
 		//TODO:HACK
-		//pthread_mutex_lock(el->lock);
-        aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
-		//pthread_mutex_unlock(el->lock);
+		pthread_mutex_lock(el->lock);
+		aeDeleteFileEvent(server.el, c->fd, AE_WRITABLE);
+		pthread_mutex_unlock(el->lock);
 
-        /* Close connection after entire reply has been sent. */
-        if (c->flags & REDIS_CLOSE_AFTER_REPLY){
-            freeClientAsync(c);
-        }
-    }
+		/* Close connection after entire reply has been sent. */
+		if (c->flags & REDIS_CLOSE_AFTER_REPLY){
+			freeClientAsync(c);
+		}
+	}
 	pthread_mutex_unlock(c->lock);
 }
 
@@ -919,18 +935,24 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 	* e.g. EXEC would block here on a writable event, so we use a
 	* trylock here, if it fails, we can always get it next time. */
 	//TODO:HACK FORCE LOCK INSTEAD OF TRYING
-	if (0) { //pthread_mutex_trylock(c->lock)) {
+	if (pthread_mutex_trylock(c->lock)) {
 		/* Need to requeue a write ready so we're called again later */
-		/* There is data to send so no other thread should be adding a file event
+		/* There is (MAYBE?) data to send so no other thread should be adding a file event
 		   concurrently, meaning we can avoid locking */
+		pthread_mutex_lock(server.el->lock);
+		//aeCreateTimeEvent(server.el, 0, delayedCreateFileEvent, (void *)c, NULL);
+		//TODO:HACK CHECK ERROR? NOT MUCH WE CAN DO THOUGH
+		aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c);
+		pthread_mutex_unlock(server.el->lock);
+
 		//pthread_mutex_lock(server.el->lock);
-		if (aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c) == AE_ERR) {
-			redisLog(REDIS_WARNING, "Failed to enable write on client socket (reply may not be sent!): %s");
-		}
+		//if (aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c) == AE_ERR) {
+		//	redisLog(REDIS_WARNING, "Failed to enable write on client socket (reply may not be sent!): %s");
+		//}
 		//pthread_mutex_unlock(server.el->lock);
 		return;
 	}
-	pthread_mutex_lock(c->lock);
+	//pthread_mutex_lock(c->lock);
 
 #ifndef _WIN32
 	if (c->flags & REDIS_MASTER) {
@@ -962,6 +984,11 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
             c->sentlen += nwritten;
             totwritten += nwritten;
 
+			//TODO:HACK MOVE FROM SEND COMPLETION HANDLER TO HERE
+			//if (c->bufpos == c->sentlen) {
+			//	c->bufpos = 0;
+			//	c->sentlen = 0;
+			//}
         } else {
             o = listNodeValue(ln);
             objlen = (int)sdslen(o->ptr);
@@ -1013,6 +1040,20 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 		if (!(c->flags & REDIS_MASTER)) c->lastinteraction = server.unixtime;
     }
 #endif
+
+	//TODO:HACK TEMPORARILY TRY TO ADD THIS TO AVOID LOCKING IN MAIN THREAD DURING SENDCOMPLETE
+	//if (c->bufpos == 0 && listLength(c->reply) == 0) {
+	//	c->sentlen = 0;
+		//aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
+
+		/* Close connection after entire reply has been sent. */
+	//	if (c->flags & REDIS_CLOSE_AFTER_REPLY) {
+	//		freeClient(c);
+			//SID:HACK I THINK THIS IS NECESSARY TO AVOID DOUBLE FREEING
+	//		return;
+	//	}
+	//}
+
 	pthread_mutex_unlock(c->lock);
 }
 
@@ -1410,6 +1451,11 @@ void processInputBuffer(redisClient *c) {
 	}
 	c->busy = 0;
 	pthread_mutex_unlock(c->lock);
+	//TODO:HACK
+	//while (!c->done)
+	//{
+	//	;
+	//}
 }
 
 void clientReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -1459,7 +1505,7 @@ void readQueryFromClient(redisClient *c) {
             nread = 0;
         } else {
 #ifdef _WIN32
-            redisLog(REDIS_WARNING, "Reading from client: %s",wsa_strerror(errno));
+            redisLog(REDIS_VERBOSE, "Reading from client: %s",wsa_strerror(errno));
 #else
             redisLog(REDIS_VERBOSE, "Reading from client: %s",strerror(errno));
 #endif

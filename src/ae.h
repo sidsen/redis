@@ -95,6 +95,7 @@ typedef struct aeEventLoop {
     int stop;
     void *apidata; /* This is used for polling API specific data */
     aeBeforeSleepProc *beforesleep;
+	//TODO:HACK MAYBE NO LONGER NEEDED SINCE NOT SCHEDULING TIMEEVENTS IN THREADPOOL?
 	pthread_mutex_t *lock; /* Alas, timeEvents need a lock */
 } aeEventLoop;
 
