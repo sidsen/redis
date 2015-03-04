@@ -197,8 +197,6 @@ static void clientDone(client c) {
         return;
     }
     if (config.keepalive) {
-		//TODO:HACK
-		//fprintf(stderr, "Resetting the client\n");
         resetClient(c);
     } else {
         config.liveclients--;

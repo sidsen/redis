@@ -1118,11 +1118,9 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     }
 
     /* We need to do a few operations on clients asynchronously. */
-	//TODO:HACK	
     clientsCron();
 
     /* Handle background operations on Redis databases. */
-	//TODO:HACK
     databasesCron();
 
     /* Start a scheduled AOF rewrite if this was requested by the user while
@@ -1839,7 +1837,6 @@ void initServer(void) {
 
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
-	//TODO:HACK
     if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         redisPanic("Can't create the serverCron time event.");
         exit(1);
@@ -1878,7 +1875,7 @@ void initServer(void) {
 	//if ((server.threadpool_size = (getNumCPUs() * 2)) < REDIS_THREADPOOL_DEFAULT_SIZE)
 	//	server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
 	redisLog(REDIS_NOTICE, "Starting %d worker threads with a threadpool queue of size %d.", server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE);
-	server.tpool = threadpool_create(server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE, 0); // THREDIS TODO - queue size should be configurable
+	server.tpool = threadpool_create(server.threadpool_size + 1, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE, 0); // THREDIS TODO - queue size should be configurable
 	server.lock = zmalloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(server.lock, NULL);
 	//server.locking_mode = 0;
@@ -2166,24 +2163,13 @@ void callCommandAndResetClient(redisClient *c) {
 	/* Need to grab/release client lock from same thread (else undefined behavior) */
 	pthread_mutex_lock(c->lock);
 
-	/* Disable sends for now; we will reenable them after processing the batch */
+	/* Disable sends for now, since we want to schedule the send after processing the batch */
 	c->disableSend = 1;
-
-	if (c->bstate.count > 0) {
-		robj* key = c->bstate.commands[0].argv[1];
-		//lockKey(c, key);
-		/* If we are in this function, then we will always have a batch request */
-		execBatch(c);
-		//unlockKey(c, key);
-		discardBatch(c);
-	}
-	else
-		execBatch(c);
-
+	/* If we are in this function, then we will always have a batch request */
+	redisAssert(c->bstate.count > 0);
+	execBatch(c);
+	discardBatch(c);
 	c->disableSend = 0;
-
-	/* call the actual command */
-	//call(c, REDIS_CALL_FULL);
 
 	/* let the response be sent to the client */
 	pthread_mutex_lock(server.lock);
@@ -2191,33 +2177,14 @@ void callCommandAndResetClient(redisClient *c) {
 		handleClientsBlockedOnLists();
 	pthread_mutex_unlock(server.lock);
 
-	//TODO:HACK TRY SENDING IMMEDIATELY
-	//sendReplyToClient(server.el, c->fd, c, 0);
-
-	/* We are in a thread. Create a timeEvent (which will run in the
-	 * main loop) to check if there are more pipelined commands to
-	 * process. */
-	pthread_mutex_lock(c->ref_lock);
-	c->refcount++;
-	pthread_mutex_unlock(c->ref_lock);
-	//TODO:HACK Putting this here instead of below seems to avoid break where resetclient below
-	// called while main thread processing new event from client.
-	resetClient(c);
-
-	//TODO:HACK TEMPORARY REMOVE (PIPELINING WON'T WORK!)
-	//pthread_mutex_lock(server.el->lock);
-	//c->time_event_id = aeCreateTimeEvent(server.el, 0, timeEventProcessInputBufferHandler, (void *)c, NULL);
-	//pthread_mutex_unlock(server.el->lock);
-
 	/* reset client and unlock */
-	//resetClient(c);
-	c->done = TRUE;
+	resetClient(c);
 	pthread_mutex_unlock(c->lock);
 
 	/* Enable send to occur */
+	//TODO: DO WE NEED TO INCREMENT REFCOUNT?
 	int rc;
 	pthread_mutex_lock(server.el->lock);
-	//aeCreateTimeEvent(server.el, 0, delayedCreateFileEvent, (void *)c, NULL);
 	rc = aeCreateFileEvent(server.el, c->fd, AE_WRITABLE, sendReplyToClient, c);
 	pthread_mutex_unlock(server.el->lock);
 	if (rc == AE_ERR) {
@@ -2386,22 +2353,7 @@ int processCommand(redisClient *c) {
 		if (p == zaddCommand || p == zrankCommand || p == zincrbyCommand) {
 			/* Always use a batch, even if it'sa batch of 1 */
 			queueBatchCommand(c);
-
-			//pthread_mutex_lock(c->ref_lock);
-			//c->refcount++;
-			//pthread_mutex_unlock(c->ref_lock);
-			//server.locking_mode++;
-			//c->done = FALSE;
-			//pthread_mutex_unlock(c->lock);			
-			//threadpool_add(server.tpool, (void(*)(void *)) callCommandAndResetClient, (void *)c, 0);
-			
-			//while (!c->done)
-			//{
-			//	;
-			//}
-			//pthread_mutex_lock(c->lock);
 			return REDIS_OK;
-			//return REDIS_ADDED_TO_THREAD;
 		}
 		else {
 			call(c, REDIS_CALL_FULL);

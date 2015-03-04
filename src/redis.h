@@ -557,9 +557,6 @@ typedef struct redisClient {
 	pthread_mutex_t *ref_lock;  /* Controls when client is reset given concurrency */
 	int refcount;
 	multiState bstate;          /* Batch state for issuing pipelined requests to threadpool */
-	//TODO:HACK
-	HANDLE doneEvent;
-	int done;
 
     /* Response buffer */
     int bufpos;

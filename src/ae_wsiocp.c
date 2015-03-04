@@ -58,7 +58,6 @@ typedef struct aeApiState {
     OVERLAPPED_ENTRY entries[MAX_COMPLETE_PER_POLL];
     list lookup[MAX_SOCKET_LOOKUP];
     list closing;
-	pthread_mutex_t* lock;
 } aeApiState;
 
 /* uses virtual FD as an index */
@@ -67,6 +66,8 @@ int aeSocketIndex(int fd) {
 }
 
 /* get data for socket / fd being monitored. Create if not found*/
+//TODO: WHY IS A LIST NEEDED, IF RFDMAP DOES A 1:1 MAPPING? ALSO NOTE
+//THE VIRTUAL FD IS SAME AS ACTUAL (aeSocketIndex)
 aeSockState *aeGetSockState(void *apistate, int fd) {
     int sindex;
     listNode *node;
@@ -92,7 +93,6 @@ aeSockState *aeGetSockState(void *apistate, int fd) {
         sockState->wreqs = 0;
         sockState->reqs = NULL;
         memset(&sockState->wreqlist, 0, sizeof(sockState->wreqlist));
-		//TODO:HACK
 		sockState->lock = zmalloc(sizeof(pthread_mutex_t));
 		pthread_mutex_init(sockState->lock, NULL);
 
@@ -209,10 +209,6 @@ static int aeApiCreate(aeEventLoop *eventLoop) {
     }
 
     state->setsize = eventLoop->setsize;
-	//TODO:HACK
-	state->lock = zmalloc(sizeof(pthread_mutex_t));
-	pthread_mutex_init(state->lock, NULL);
-
     eventLoop->apidata = state;
     /* initialize the IOCP socket code with state reference */
     aeWinInit(state, state->iocp, aeGetSockState, aeDelSockState);
@@ -236,10 +232,7 @@ static void aeApiFree(aeEventLoop *eventLoop) {
 /* monitor state changes for a socket */
 static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = (aeApiState *)eventLoop->apidata;
-	//TODO:HACK
-	pthread_mutex_lock(state->lock);
     aeSockState *sockstate = aeGetSockState(state, fd);
-	pthread_mutex_unlock(state->lock);
     if (sockstate == NULL) {
         errno = WSAEINVAL;
         return -1;
@@ -287,10 +280,7 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
 /* stop monitoring state changes for a socket */
 static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = (aeApiState *)eventLoop->apidata;
-	//TODO:HACK
-	pthread_mutex_lock(state->lock);
     aeSockState *sockstate = aeGetExistingSockState(state, fd);
-	pthread_mutex_unlock(state->lock);
     if (sockstate == NULL) {
         errno = WSAEINVAL;
         return;
@@ -321,14 +311,9 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
 			&numComplete,
 			mswait,
 			FALSE);
-		if (!rc && GetLastError() != 258) {
-			fprintf(stderr, "Error in getcompletion status is %d\n", GetLastError());
+		if (!rc && GetLastError() != WAIT_TIMEOUT) {
+			redisLog(REDIS_WARNING, "Error in GetQueuedCompletionStatusEx: %d", GetLastError());
 		}
-		/*
-		else if (!rc && numComplete > 0) {
-			fprintf(stderr, "Getcompletion failed but returned %d entries\n", numComplete);
-		}
-		*/
     } else {
         /* need to get one at a time. Use first array element */
         rc = GetQueuedCompletionStatus(state->iocp,
@@ -360,26 +345,12 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
         }
     }
 
-	//TODO:HACK
-	/*
-	if (!rc && numComplete > 0)
-	{
-		LPOVERLAPPED_ENTRY entry = state->entries;
-		int rfd = (int)entry->lpCompletionKey;
-		aeApiAddEvent(eventLoop, rfd, AE_WRITABLE);
-	}
-	*/
-    if (rc && numComplete > 0) {
+	if (rc && numComplete > 0) {
         LPOVERLAPPED_ENTRY entry = state->entries;
         for (j = 0; j < numComplete && numevents < state->setsize; j++, entry++) {
             /* the competion key is the socket */
             int rfd = (int)entry->lpCompletionKey;
-			//TODO:HACK Need to protect the socket state of the event loop
-			pthread_mutex_lock(state->lock);
             sockstate = aeGetExistingSockState(state, rfd);
-			/* It's safe to unlock here because concurrent threads in the threadpool will 
-			   at most be adding sockets to the list */
-			pthread_mutex_unlock(state->lock);
             if (sockstate != NULL) {
 				/* Protect access to this specific socket */
 				pthread_mutex_lock(sockstate->lock);
@@ -399,7 +370,7 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                     if (entry->lpOverlapped == &sockstate->ov_read) {
                         sockstate->masks &= ~CONNECT_PENDING;
                         /* enable read and write events for this connection */
-						//TODO:HACK CONSIDER UNLOCKING AND RELOCKING SOCKSTATE, SINCE WILL HAPPEN IN FUNC ANYWAY
+						//TODO: SHOULD WE UNLOCK/RELOCK SOCKSTATE? CURRENTLY RESULTS IN DOUBLE LOCKING
                         aeApiAddEvent(eventLoop, rfd, sockstate->masks);
                     }
                 } else {
@@ -414,70 +385,42 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                             numevents++;
                         }
                     } else {
-						//TODO:HACK
-						/*
-						redisClient* c = NULL;
-						if (entry->lpOverlapped != NULL) {
-							c = (redisClient*)(((asendreq *)entry->lpOverlapped)->req.client);
-							if (c != NULL)
-								pthread_mutex_lock(c->lock);
-							else
-								c = NULL;
-						}
-						*/
-						//pthread_mutex_lock(eventLoop->lock);
 						if (sockstate->wreqs > 0 && entry->lpOverlapped != NULL) {
 							/* should be write complete. Get results */
 							asendreq *areq = (asendreq *)entry->lpOverlapped;
 							matched = removeMatchFromList(&sockstate->wreqlist, areq);
 							if (matched) {
-								//TODO:HACK
-								//pthread_mutex_lock(eventLoop->lock);
 								sockstate->wreqs--;
-								//pthread_mutex_unlock(eventLoop->lock);
 								/* if no active write requests, set ready to write */
 								if (sockstate->wreqs == 0 && sockstate->masks & AE_WRITABLE) {
 									eventLoop->fired[numevents].fd = rfd;
 									eventLoop->fired[numevents].mask = AE_WRITABLE;
 									numevents++;
 								}
-								//if (c != NULL)
-								//pthread_mutex_unlock(eventLoop->lock);
-
 								/* call write complete callback so buffers can be freed */
 								if (areq->proc != NULL) {
 									DWORD written = 0;
 									DWORD flags;
 									WSAGetOverlappedResult(rfd, &areq->ov, &written, FALSE, &flags);
-									//TODO:HACK
-									//pthread_mutex_unlock(eventLoop->lock);
 									areq->proc(areq->eventLoop, rfd, &areq->req, (int)written);
-									//pthread_mutex_lock(eventLoop->lock);
 								}
 								zfree(areq);
 							}
-							else if (1) { // c != NULL) {
-								//TODO:HACK
-								//pthread_mutex_unlock(eventLoop->lock);
-							}
-						}
-						else if (1) { // c != NULL) {
-							//TODO:HACK
-							//pthread_mutex_unlock(eventLoop->lock);
 						}
                     }
                     if (matched == 0) {
                         /* redisLog */printf("Sec:%lld Unknown complete (closed) on %d\n", gettimeofdaysecs(NULL), rfd);
+						pthread_mutex_unlock(sockstate);
                         sockstate = NULL;
                     }
                 }
-				pthread_mutex_unlock(sockstate->lock);
-				//TODO:HACK
-				//pthread_mutex_unlock(eventLoop->lock);
+				if (sockstate) {
+					pthread_mutex_unlock(sockstate->lock);
+				}
             } else {
                 // no match for active connection.
                 // Try the closing list.
-				//TODO:HACK NO NEED TO PROTECT THE CLOSING LIST SINCE THREADPOOL THREADS DON'T TOUCH IT
+				/* No need to lock protect the closing list since the threadpool doesn't touch it */
                 list *socklist = &(state->closing);
                 listNode *node;
                 node = listFirst(socklist);
@@ -501,22 +444,16 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                                 zfree(areq);
                             }
                         }
-						int delSockState = 0;
                         if (sockstate->wreqs == 0 &&
                             (sockstate->masks & (CONNECT_PENDING | READ_QUEUED | SOCKET_ATTACHED)) == 0) {
                             if ((sockstate->masks & CLOSE_PENDING) != 0) {
                                 close(rfd);
                                 sockstate->masks &= ~(CLOSE_PENDING);
                             }
-                            // safe to delete sockstate
-                            //aeDelSockState(state, sockstate);
-							delSockState = 1;
-                        }
-						if (delSockState) {
-							pthread_mutex_lock(state->lock);
+							// safe to delete sockstate
+							//TODO: WE ARE ASSUMING THERE IS NO CONCURRENT THREAD ACCESSING THE SOCKET! (ENFORCE?)
 							aeDelSockState(state, sockstate);
-							pthread_mutex_unlock(state->lock);
-						}
+                        }
                         break;
                     }
                     node = listNextNode(node);

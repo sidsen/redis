@@ -155,9 +155,6 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
 {
     aeFileEvent *fe;
 
-	//TODO:HACK
-	//pthread_mutex_lock(eventLoop->lock);
-
     if (fd >= eventLoop->setsize) {
         errno = ERANGE;
         return AE_ERR;
@@ -172,9 +169,6 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
     fe->clientData = clientData;
     if (fd > eventLoop->maxfd)
         eventLoop->maxfd = fd;
-
-	//TODO:HACK
-	//pthread_mutex_unlock(eventLoop->lock);
 
     return AE_OK;
 }
@@ -413,7 +407,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         aeTimeEvent *shortest = NULL;
         struct timeval tv, *tvp;
 
-		pthread_mutex_lock(eventLoop->lock);
+		//pthread_mutex_lock(eventLoop->lock);
 
         if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
             shortest = aeSearchNearestTimer(eventLoop);
@@ -446,13 +440,10 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             }
         }
 
-		//TODO:HACK TEMP MOVE BELOW APIPOLL
-		pthread_mutex_unlock(eventLoop->lock);
+		//pthread_mutex_unlock(eventLoop->lock);
 
         numevents = aeApiPoll(eventLoop, tvp);
 
-		//pthread_mutex_unlock(eventLoop->lock);
-		//TODO:HACK
 		int readProc = 0;
 		//int writeProc = 0;
 		int procReads = 1;
@@ -466,65 +457,24 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             fe = &eventLoop->events[eventLoop->fired[j].fd];
 
 			/* note the fe->mask & mask & ... code: maybe an already processed
-             * event removed an element that fired and we still didn't
-             * processed, so we check if the event is still valid. */
-            if (fe->mask & mask & AE_READABLE) {
+			* event removed an element that fired and we still didn't
+			* processed, so we check if the event is still valid. */
+			if (fe->mask & mask & AE_READABLE) {
 				rfired = 1;
-				if (procReads) {
-					fe->rfileProc(eventLoop, fd, fe->clientData, mask);
-					readProc++;
-					//TODO:HACK
-					redisClient* c = (redisClient*)fe->clientData;
-					aeFileProc* temp = clientReadHandler;
-					if (c && (fe->rfileProc == temp)) {
-						listAddNodeHead(rClients, c);
-					}
-				}
-				//readProc++;
-            }
-            if (fe->mask & mask & AE_WRITABLE) {
-				//TODO:HACK
-				if (!procReads) {
-					if (!rfired || fe->wfileProc != fe->rfileProc) {
-						//TODO:HACK WAIT FOR ANY CONCURRENT READ TO COMPLETE
-						//redisClient* c = (redisClient*)fe->clientData;
-						//while (!c->done) ;
-						fe->wfileProc(eventLoop, fd, fe->clientData, mask);
-						//TODO:HACK
-						//writeProc++;
-					}
-				}
-            }
-
-			if (procReads) {
-				processed++;
+				fe->rfileProc(eventLoop, fd, fe->clientData, mask);
 			}
-			if (procReads && (j == numevents - 1)) {
-				if (readProc > 1)
-					;//fprintf(stderr, "Processed %d read procs and list is %d long", readProc, listLength(rClients));
-				j = -1;
-				//TODO:HACK WAIT FOR ANY CONCURRENT READ TO COMPLETE
-				while (rClients->head) {
-					redisClient* c = (redisClient*)(rClients->head->value);
-					//while (!c->done) {
-					//	;
-					//}
-					listDelNode(rClients, rClients->head);
-				}
-				listRelease(rClients);
-				//TODO:HACK
-				// Repeat loop but process writes this time
-				procReads = 0;
+			if (fe->mask & mask & AE_WRITABLE) {
+				if (!rfired || fe->wfileProc != fe->rfileProc)
+					fe->wfileProc(eventLoop, fd, fe->clientData, mask);
 			}
+			processed++;
         }
-		//TODO:HACK
-		//fprintf(stderr, "Processed %d read events and %d write events\n", readProc, writeProc);
     }
     /* Check time events */
 	if (flags & AE_TIME_EVENTS) {
-		pthread_mutex_lock(eventLoop->lock);
+		//pthread_mutex_lock(eventLoop->lock);
 		processed += processTimeEvents(eventLoop);
-		pthread_mutex_unlock(eventLoop->lock);
+		//pthread_mutex_unlock(eventLoop->lock);
 	}
     return processed; /* return the number of processed file/time events */
 }
