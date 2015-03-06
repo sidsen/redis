@@ -236,11 +236,6 @@ int aeWinSocketSend(int fd, char *buf, int len,
 
     sockstate = aeGetSockState(iocpState, fd);
 
-    if (sockstate != NULL &&
-        (sockstate->masks & CONNECT_PENDING)) {
-        aeWait(fd, AE_WRITABLE, 50);
-    }
-
     /* if not an async socket, do normal send */
     if (sockstate == NULL ||
         (sockstate->masks & SOCKET_ATTACHED) == 0 ||
@@ -252,6 +247,13 @@ int aeWinSocketSend(int fd, char *buf, int len,
         return result;
     }
 
+	/* sockstate must be non-null at this point */
+	if (sockstate->masks & CONNECT_PENDING) {
+		aeWait(fd, AE_WRITABLE, 50);
+	}
+	
+	//TODO: CAN WE MOVE THIS LOWER?
+	pthread_mutex_lock(sockstate->lock);
     /* use overlapped structure to send using IOCP */
     areq = (asendreq *)zmalloc(sizeof(asendreq));
     memset(areq, 0, sizeof(asendreq));
@@ -280,6 +282,7 @@ int aeWinSocketSend(int fd, char *buf, int len,
         errno = WSAGetLastError();
         zfree(areq);
     }
+	pthread_mutex_unlock(sockstate->lock);
     return SOCKET_ERROR;
 }
 

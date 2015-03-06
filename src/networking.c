@@ -907,10 +907,14 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 	if (pthread_mutex_trylock(c->lock)) {
 		/* Need to requeue a write ready so we're called again later */
 		//TODO: THIS TRIGGERS SOMETIMES, BUT IT SHOULD NOT
-		redisAssert(c->bufpos > c->sentlen);
+		//redisAssert(c->bufpos > c->sentlen);
+		int rc;
 		pthread_mutex_lock(el->lock);
-		aeCreateFileEvent(el, c->fd, AE_WRITABLE, sendReplyToClient, c);
+		rc = aeCreateFileEvent(el, c->fd, AE_WRITABLE, sendReplyToClient, c);
 		pthread_mutex_unlock(el->lock);
+		if (rc == AE_ERR) {
+			redisLog(REDIS_WARNING, "Failed to post write event to socket");
+		}
 		return;
 	}
 

@@ -221,7 +221,7 @@ int replace_rename(const char *src, const char *dest);
 #define pthread_mutex_t CRITICAL_SECTION
 #define pthread_attr_t ssize_t
 
-#define pthread_mutex_init(a,b) (InitializeCriticalSectionAndSpinCount((a), 0x80000400),0)
+#define pthread_mutex_init(a,b) (InitializeCriticalSectionAndSpinCount((a), 0x00000fff),0)  // 0x80000400),0)
 #define pthread_mutex_destroy(a) DeleteCriticalSection((a))
 #define pthread_mutex_lock EnterCriticalSection
 #define pthread_mutex_trylock(a) (TryEnterCriticalSection((a)) == 0)

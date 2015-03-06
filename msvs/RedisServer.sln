@@ -136,6 +136,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "NewFolder1", "NewFolder1", 
 		..\..\thredis\src\zmalloc.h = ..\..\thredis\src\zmalloc.h
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mlib", "..\deps\mlib\mlib.vcxproj", "{D2B4EADE-A5B5-472F-BD18-470B187BBECC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -213,6 +215,14 @@ Global
 		{74A69E5D-6540-43CC-9975-20989BF19EB0}.Release|Win32.ActiveCfg = Release|x64
 		{74A69E5D-6540-43CC-9975-20989BF19EB0}.Release|x64.ActiveCfg = Release|x64
 		{74A69E5D-6540-43CC-9975-20989BF19EB0}.Release|x64.Build.0 = Release|x64
+		{D2B4EADE-A5B5-472F-BD18-470B187BBECC}.Debug|Win32.ActiveCfg = Debug|Win32
+		{D2B4EADE-A5B5-472F-BD18-470B187BBECC}.Debug|Win32.Build.0 = Debug|Win32
+		{D2B4EADE-A5B5-472F-BD18-470B187BBECC}.Debug|x64.ActiveCfg = Debug|x64
+		{D2B4EADE-A5B5-472F-BD18-470B187BBECC}.Debug|x64.Build.0 = Debug|x64
+		{D2B4EADE-A5B5-472F-BD18-470B187BBECC}.Release|Win32.ActiveCfg = Release|Win32
+		{D2B4EADE-A5B5-472F-BD18-470B187BBECC}.Release|Win32.Build.0 = Release|Win32
+		{D2B4EADE-A5B5-472F-BD18-470B187BBECC}.Release|x64.ActiveCfg = Release|x64
+		{D2B4EADE-A5B5-472F-BD18-470B187BBECC}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
