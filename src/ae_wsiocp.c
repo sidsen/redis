@@ -158,15 +158,15 @@ void aeDelSockState(void *apistate, aeSockState *sockState) {
         sindex = aeSocketIndex(sockState->fd);
         socklist = &(((aeApiState *)apistate)->lookup[sindex]);
         if (removeMatchFromList(socklist, sockState) == 1) {
-            zfree(sockState);
 			pthread_mutex_unlock(sockState->lock);
+            zfree(sockState);
             return;
         }
 		// try closing list
         socklist = &(((aeApiState *)apistate)->closing);
         if (removeMatchFromList(socklist, sockState) == 1) {
-            zfree(sockState);
 			pthread_mutex_unlock(sockState->lock);
+            zfree(sockState);
             return;
         }
     } else {
