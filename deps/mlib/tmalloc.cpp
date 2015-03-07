@@ -5,6 +5,7 @@
 //
 
 #include "stdafx.h"
+#include "tmalloc.h"
 #include "tmalloc-include.h"
 
 __declspec(thread) _TMThreadInfo *_TMthreadinfo=0;

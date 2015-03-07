@@ -65,6 +65,11 @@
 #define ZMALLOC_LIB ("dlmalloc-" __xstr(2) "." __xstr(8) )
 #define HAVE_MALLOC_SIZE 1
 #define zmalloc_size(p)  g_msize(p)
+
+#elif defined(USE_TMALLOC)
+#include "tmalloc.h"
+#define HAVE_MALLOC_SIZE 1
+#define zmalloc_size(p) _tgetsize(p)
 #endif
 
 #ifndef ZMALLOC_LIB

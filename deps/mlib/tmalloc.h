@@ -37,10 +37,19 @@
 // buffer is allocated from the subpool holding the smallest buffers that will
 // fit the requested size.
 
-void *_tmalloc(size_t size);
-void _tfree(void *buf);
-void *_trealloc(void *ptr, size_t size);
-size_t _tgetsize(void *buf);
+#ifndef __TMALLOC_H
+#define __TMALLOC_H
+
+#ifdef __cplusplus
+#define TMALLOC_EXPORT extern "C" 
+#else
+#define TMALLOC_EXPORT
+#endif
+
+TMALLOC_EXPORT void *_tmalloc(size_t size);
+TMALLOC_EXPORT void _tfree(void *buf);
+TMALLOC_EXPORT void *_trealloc(void *ptr, size_t size);
+TMALLOC_EXPORT size_t _tgetsize(void *buf);
 void _tmreportprocessor(int processor); // reports on which processor a thread is running. Used only if _TM_NUMAALLOC is defined
 
 // original allocation functions
@@ -48,7 +57,10 @@ void *orig_malloc(size_t size);
 void orig_free(void *buf);
 void *orig_realloc(void *ptr, size_t size);
 
-#define malloc _tmalloc
-#define free _tfree
-#define realloc _trealloc
+/* Commenting out as redis needs to define this in the right place to avoid 
+   naming conflicts */
+//#define malloc _tmalloc
+//#define free _tfree
+//#define realloc _trealloc
 
+#endif
