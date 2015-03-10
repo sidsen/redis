@@ -3,10 +3,19 @@
 
 //#include "utility.h"
 #include "SharedLog.h"
+#include "..\dict.h"
 
 struct RDSS;
 typedef struct RDSS   RDS;
-#define NULL 0
+
+
+//TODO:RDS TEMPORARILY CREATE GLOBAL INSTANCE
+extern RDS* rds;
+extern u32 threadCounter;
+extern dict* thread_ids;
+/* Hash type hash table (note that small hashes are represented with ziplists) */
+extern dictType IntDictType;
+
 
 // This is using the skiplist from ASCYLIB
 //#include "seq.h"
@@ -36,6 +45,7 @@ enum {
 	CONTAINS,
 	INSERT,
 	REMOVE,
+	INCRBY
 };
 
 
@@ -91,6 +101,7 @@ RDS* RDS_new();
 void RDS_StartThread(RDS *rds, int thrid);
 u32 RDS_contains(RDS *rds, int thrid, u32 arg1, u32 arg2);
 u32 RDS_insert(RDS *rds, int thrid, u32 arg1, u32 arg2);
+u32 RDS_incrby(RDS *rds, int thrid, u32 arg1, u32 arg2);
 u32 RDS_remove(RDS *rds, int thrid, u32 arg1, u32 arg2);
 
 #endif  // _SHAREDDS_H

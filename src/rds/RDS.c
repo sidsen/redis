@@ -1,6 +1,22 @@
 
 #include "RDS.h"
+//TODO:RDS
+#include "..\redis.h"
 
+//TODO:RDS TEMPORARILY CREATE GLOBAL 
+RDS* rds;
+u32 threadCounter = 0;
+dict* thread_ids;
+
+/* Hash type hash table (note that small hashes are represented with ziplists) */
+dictType IntDictType = {
+	dictIntHashFunction,             /* hash function */
+	NULL,                       /* key dup */
+	NULL,                       /* val dup */
+	NULL,						/* key compare */
+	NULL,						/* key destructor */
+	NULL						/* val destructor */
+};
 
 /**********************************************************
 **                    LOCAL
@@ -8,18 +24,23 @@
 
 
 inline u32 RDS_contains_local(RDS *rds, int thrid, u32 arg1, u32 arg2) {
-	return sl_contains_local((rds->local[rds->leader[thrid].val].replica->localReg), arg1);
+	return zrankGenericCommandLocal((rds->local[rds->leader[thrid].val].replica->localReg), arg1);
 }
 
 inline u32 RDS_insert_local(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 	//printf("\n-----------------> sl_add_local %d\n", 0);
-	return sl_add_local((rds->local[rds->leader[thrid].val].replica->localReg), arg1, arg2);
+	return zaddGenericCommandLocal((rds->local[rds->leader[thrid].val].replica->localReg), arg1, arg2, 0);
 }
 
 inline u32 RDS_remove_local(RDS *rds, int thrid, u32 arg1, u32 arg2) {
-	return sl_remove_local((rds->local[rds->leader[thrid].val].replica->localReg), arg1);
+	redisAssert(0);
+	return 0; // sl_remove_local((rds->local[rds->leader[thrid].val].replica->localReg), arg1);
 }
 
+inline u32 RDS_incrby_local(RDS *rds, int thrid, u32 arg1, u32 arg2) {
+	//printf("\n-----------------> sl_add_local %d\n", 0);
+	return zaddGenericCommandLocal((rds->local[rds->leader[thrid].val].replica->localReg), arg1, arg2, 1);
+}
 
 inline u32 Execute_local(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	switch (op) {
@@ -29,8 +50,10 @@ inline u32 Execute_local(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 		return RDS_insert_local(rds, thrid, arg1, arg2);
 	case REMOVE:
 		return RDS_remove_local(rds, thrid, arg1, arg2);
+	case INCRBY:
+		return RDS_incrby_local(rds, thrid, arg1, arg2);
 	default:
-		assert(0);
+		redisAssert(0);
 	}
 }
 
@@ -51,10 +74,13 @@ inline void DoOp(RDS *rds, u32 thrid, u32 op, u32 arg1, u32 arg2) {
 	case REMOVE:
 		RDS_remove_local(rds, thrid, arg1, arg2);
 		break;
+	case INCRBY:
+		RDS_incrby_local(rds, thrid, arg1, arg2);
+		break;
 	case EMPTY:
 		break;
 	default:
-		assert(0);
+		redisAssert(0);
 		break;
 	}
 }
@@ -239,7 +265,7 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 		if ((CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1)) == 0) {
 			if (rds->local[rds->leader[thrid].val].replica->slot[myIndex].op == 0) {
-				assert(resp != MAX_UINT32);
+				redisAssert(resp != MAX_UINT32);
 				rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
 				return resp;
 			}
@@ -369,7 +395,7 @@ inline void NodeReplica_OPTR_Init(NodeReplica_OPTR *nr) {
 	int i;
 	//printf("\n-----------------> NodeReplica_init %d\n", 0);
 	//nr->localReg = (SharedDSType*)malloc(sizeof(SharedDSType));
-	nr->localReg = sl_set_new_local();
+	nr->localReg = createZsetObject();  // sl_set_new_local();
 	nr->localTail = 0;
 	nr->localBit = 1;
 	nr->combinerLock.val = 0;
@@ -406,6 +432,7 @@ RDS* RDS_new() {
 	RDS *rds = (RDS *)malloc(sizeof(RDS));
 	//printf("\n-----------------> NEW %d\n", 1);
 	RDS_Start(rds);
+	thread_ids = dictCreate(&IntDictType, NULL);
 	return rds;
 }
 
@@ -424,6 +451,7 @@ void IntraSocket(RDS *rds, int thrid) {
 void RDS_StartThread(RDS *rds, int thrid) {
 	//printf("-----------------> START %d\n", thrid);
 	//printf("\n-----------------> START_THR %d\n", thrid);
+	dictAdd(thread_ids, GetCurrentThreadId(), thrid);
 	IntraSocket(rds, thrid);
 }
 
@@ -435,6 +463,12 @@ u32 RDS_contains(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 u32 RDS_insert(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 	//printf("\n-----------------> INSERT %d\n", thrid);
 	return Combine(rds, thrid, INSERT, arg1, arg2);		
+}
+
+u32 RDS_incrby(RDS *rds, int thrid, u32 arg1, u32 arg2) {
+	//printf("\n-----------------> INSERT %d\n", thrid);
+	SharedLog_Print(&rds->sharedLog);
+	return Combine(rds, thrid, INCRBY, arg1, arg2);
 }
 
 u32 RDS_remove(RDS *rds, int thrid, u32 arg1, u32 arg2) {

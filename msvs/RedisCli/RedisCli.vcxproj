@@ -83,7 +83,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\deps\hiredis;$(SolutionDir)..\deps\linenoise;$(SolutionDir)..\deps\lua\src</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\src\rds;$(SolutionDir)..\deps\hiredis;$(SolutionDir)..\deps\linenoise;$(SolutionDir)..\deps\lua\src</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32_IOCP;WIN32;USE_DL_PREFIX;LACKS_STDLIB_H;_DEBUG;_CONSOLE;%(PreprocessorDefinitions);NO_QFORKIMPL</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <DisableSpecificWarnings>4996</DisableSpecificWarnings>

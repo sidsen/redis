@@ -1174,6 +1174,7 @@ void zsetConvert(robj *zobj, int encoding) {
  * Sorted set commands
  *----------------------------------------------------------------------------*/
 
+#if 0
 /* This generic command implements both ZADD and ZINCRBY. */
 void zaddGenericCommand(redisClient *c, int incr) {
     static char *nanerr = "resulting score is not a number (NaN)";
@@ -1314,6 +1315,110 @@ cleanup:
         notifyKeyspaceEvent(REDIS_NOTIFY_ZSET,
             incr ? "zincr" : "zadd", key, c->db->id);
     }
+}
+#endif
+
+/* This generic command implements both ZADD and ZINCRBY. */
+void zaddGenericCommand(redisClient *c, int incr) {
+	static char *nanerr = "resulting score is not a number (NaN)";
+	robj *key = c->argv[1];
+	robj *ele;
+	robj *zobj;
+	robj *curobj;
+	double score = 0, *scores = NULL, curscore = 0.0;
+	int j, elements = (c->argc - 2) / 2;
+	int added = 0, updated = 0, keyLocked = 0;
+
+	if (c->argc % 2) {
+		addReply(c, shared.syntaxerr);
+		return;
+	}
+
+	/* Start parsing all the scores, we need to emit any syntax error
+	* before executing additions to the sorted set, as the command should
+	* either execute fully or nothing at all. */
+	scores = zmalloc(sizeof(double)*elements);
+	for (j = 0; j < elements; j++) {
+		if (getDoubleFromObjectOrReply(c, c->argv[2 + j * 2], &scores[j], NULL)
+			!= REDIS_OK) goto cleanup;
+	}
+
+	for (j = 0; j < elements; j++) {
+		score = scores[j];
+		ele = c->argv[3 + j * 2] = tryObjectEncoding(c->argv[3 + j * 2]);
+		int success;
+		if (incr) {
+			success = RDS_incrby(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
+				(u32)(score), strtol(ele, NULL, 10));
+		}
+		else {
+			success = RDS_insert(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
+				(u32)(score), strtol(ele, NULL, 10));
+		}
+		if (!success) {
+			addReplyError(c, nanerr);
+			/* Don't need to check if the sorted set is empty
+			* because we know it has at least one element. */
+			goto cleanup;
+		}
+	}
+
+	if (incr) /* ZINCRBY */
+		addReplyDouble(c, score);
+	else /* ZADD */
+		addReplyLongLong(c, added);
+
+cleanup:
+	zfree(scores);
+	if (added || updated) {
+		signalModifiedKey(c->db, key);
+		notifyKeyspaceEvent(REDIS_NOTIFY_ZSET,
+			incr ? "zincr" : "zadd", key, c->db->id);
+	}
+}
+
+int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
+	zset *zs = zobj->ptr;
+	zskiplistNode *znode;
+	dictEntry *de;
+	robj* ele = createObject(REDIS_STRING, &member);
+	ele->encoding = REDIS_ENCODING_INT;
+	robj *curobj;
+	double curscore;
+
+	de = dictFind(zs->dict, ele);
+	if (de != NULL) {
+		curobj = dictGetKey(de);
+		curscore = *(double*)dictGetVal(de);
+
+		if (incr) {
+			score += curscore;
+			if (isnan(score)) {
+				return 0;
+			}
+		}
+
+		/* Remove and re-insert when score changed. We can safely
+		* delete the key object from the skiplist, since the
+		* dictionary still has a reference to it. */
+		if (score != curscore) {
+			redisAssertWithInfo(NULL, curobj, zslDelete(zs->zsl, curscore, curobj));
+			znode = zslInsert(zs->zsl, score, curobj);
+			incrRefCount(curobj); /* Re-inserted in skiplist. */
+			dictGetVal(de) = &znode->score; /* Update score ptr. */
+			//server.dirty++;
+			//updated++;
+		}
+	}
+	else {
+		znode = zslInsert(zs->zsl, score, ele);
+		incrRefCount(ele); /* Inserted in skiplist. */
+		redisAssertWithInfo(NULL, NULL, dictAdd(zs->dict, ele, &znode->score) == DICT_OK);
+		incrRefCount(ele); /* Added to dictionary. */
+		//server.dirty++;
+		//added++;
+	}
+	return 1;
 }
 
 void zaddCommand(redisClient *c) {
@@ -2784,6 +2889,8 @@ void zscoreCommand(redisClient *c) {
     }
 }
 
+//TODO:RDS SAVE OLD COPY
+#if 0
 void zrankGenericCommand(redisClient *c, int reverse) {
     robj *key = c->argv[1];
     robj *ele = c->argv[2];
@@ -2844,6 +2951,97 @@ void zrankGenericCommand(redisClient *c, int reverse) {
         redisPanic("Unknown sorted set encoding");
     }
 }
+#endif
+
+void zrankGenericCommand(redisClient *c, int reverse) {
+	robj *key = c->argv[1];
+	robj *ele = c->argv[2];
+	robj *zobj;
+	unsigned long llen = MAX_UINT32;
+	unsigned long rank;
+
+	//if ((zobj = lookupKeyReadOrReply(c, key, shared.nullbulk)) == NULL ||
+	//	checkType(c, zobj, REDIS_ZSET)) return;
+	//llen = zsetLength(zobj);
+
+	/*
+	redisAssertWithInfo(c, ele, ele->encoding == REDIS_ENCODING_RAW);
+	if (zobj->encoding == REDIS_ENCODING_ZIPLIST) {
+		redisAssert(0);
+		unsigned char *zl = zobj->ptr;
+		unsigned char *eptr, *sptr;
+
+		eptr = ziplistIndex(zl, 0);
+		redisAssertWithInfo(c, zobj, eptr != NULL);
+		sptr = ziplistNext(zl, eptr);
+		redisAssertWithInfo(c, zobj, sptr != NULL);
+
+		rank = 1;
+		while (eptr != NULL) {
+			if (ziplistCompare(eptr, ele->ptr, (unsigned int)sdslen(ele->ptr)))
+				break;
+			rank++;
+			zzlNext(zl, &eptr, &sptr);
+		}
+
+		if (eptr != NULL) {
+			if (reverse)
+				addReplyLongLong(c, llen - rank);
+			else
+				addReplyLongLong(c, rank - 1);
+		}
+		else {
+			addReply(c, shared.nullbulk);
+		}
+	}
+	else if (zobj->encoding == REDIS_ENCODING_SKIPLIST) {
+	*/
+		//zset *zs = zobj->ptr;
+		//zskiplist *zsl = zs->zsl;
+		dictEntry *de;
+		double score;
+
+		ele = c->argv[2] = tryObjectEncoding(c->argv[2]);
+		rank = RDS_contains(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
+			strtol(ele, NULL, 10), 0);
+		if (rank >= 1) {
+			if (reverse) {
+				redisAssert(0);
+				addReplyLongLong(c, llen - rank);
+			} 
+			else
+				addReplyLongLong(c, rank - 1);
+		}
+		else {
+			addReply(c, shared.nullbulk);
+		}
+		/*
+	}
+	else {
+		redisPanic("Unknown sorted set encoding");
+	}
+	*/
+}
+
+int zrankGenericCommandLocal(robj* zobj, int member) {
+	zset *zs = zobj->ptr;
+	zskiplist *zsl = zs->zsl;
+	dictEntry *de;
+	double score;
+	// Use string type since it won't barf on delete
+	robj* ele = createObject(REDIS_STRING, &member);
+	ele->encoding = REDIS_ENCODING_INT;
+	unsigned long rank = 0;
+
+	de = dictFind(zs->dict, ele);
+	if (de != NULL) {
+		score = *(double*)dictGetVal(de);
+		rank = zslGetRank(zsl, score, ele);
+		redisAssertWithInfo(NULL, ele, rank); /* Existing elements always have a rank. */
+	}
+	return rank;
+}
+
 
 void zrankCommand(redisClient *c) {
     zrankGenericCommand(c, 0);

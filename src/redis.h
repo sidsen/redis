@@ -72,6 +72,8 @@ typedef long long mstime_t; /* millisecond time type. */
 #include "util.h"    /* Misc functions useful in many places */
 #include "latency.h" /* Latency monitor API */
 #include "sparkline.h" /* ASII graphs API */
+//TODO:RDS
+#include "RDS.h"
 
 #include "redisLog.h" /* moved logging for hiredis and RedisCli usage /*
 
@@ -404,7 +406,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_BIND_ADDR (server.bindaddr_count ? server.bindaddr[0] : NULL)
 
 /* Threads */
-#define REDIS_THREADPOOL_DEFAULT_SIZE 1
+#define REDIS_THREADPOOL_DEFAULT_SIZE 4
 #define REDIS_THREADPOOL_MAX_SIZE 1024
 #define REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE 1024
 
@@ -901,6 +903,10 @@ struct redisServer {
 	threadpool_t *tpool;
 	int threadpool_size;
 	pthread_mutex_t *lock;
+	
+	/* Replicated data structures (RDS) state */
+	RDS* rds;
+
 	//int locking_mode;        /* if this is 0, locking should be unnecessary */
 };
 
@@ -1522,6 +1528,10 @@ void pfcountCommand(redisClient *c);
 void pfmergeCommand(redisClient *c);
 void pfdebugCommand(redisClient *c);
 void latencyCommand(redisClient *c);
+
+//TODO:RDS
+int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr);
+int zrankGenericCommandLocal(robj* zobj, int member);
 
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));

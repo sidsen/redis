@@ -5,15 +5,16 @@
 //
 
 
-#ifdef _MSC_VER
-#pragma once
-#define _CRT_SECURE_NO_WARNINGS
-#pragma warning(disable: 4996)
-#endif
+//#ifdef _MSC_VER
+//#pragma once
+//#define _CRT_SECURE_NO_WARNINGS
+//#pragma warning(disable: 4996)
+//#endif
 
 #ifdef _WIN32
 #define inline __inline
 #include <stdbool.h>
+#include <stddef.h>
 #endif
 
 #ifdef _MSC_VER

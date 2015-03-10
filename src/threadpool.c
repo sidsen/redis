@@ -39,6 +39,7 @@
 #include <pthread.h>
 #endif
 #include "threadpool.h"
+#include "RDS.h"
 
 /**
 *  @struct threadpool_task
@@ -273,6 +274,10 @@ int threadpool_free(threadpool_t *pool)
 static void *threadpool_thread(void *threadpool)
 {
 	threadpool_t *pool = (threadpool_t *)threadpool;
+	u32 thread_id = AtomicInc32(&threadCounter) - 1;
+
+	RDS_StartThread(rds, thread_id);
+	
 	threadpool_task_t task;
 	for (;;) {
 		/* Lock must be taken to wait on conditional variable */
