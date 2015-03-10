@@ -467,7 +467,8 @@ u32 RDS_insert(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 
 u32 RDS_incrby(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 	//printf("\n-----------------> INSERT %d\n", thrid);
-	SharedLog_Print(&rds->sharedLog);
+	//TODO:RDS
+	//SharedLog_Print(&rds->sharedLog);
 	return Combine(rds, thrid, INCRBY, arg1, arg2);
 }
 

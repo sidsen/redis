@@ -1174,7 +1174,7 @@ void zsetConvert(robj *zobj, int encoding) {
  * Sorted set commands
  *----------------------------------------------------------------------------*/
 
-#if 0
+#if 1
 /* This generic command implements both ZADD and ZINCRBY. */
 void zaddGenericCommand(redisClient *c, int incr) {
     static char *nanerr = "resulting score is not a number (NaN)";
@@ -1318,6 +1318,7 @@ cleanup:
 }
 #endif
 
+#if 0
 /* This generic command implements both ZADD and ZINCRBY. */
 void zaddGenericCommand(redisClient *c, int incr) {
 	static char *nanerr = "resulting score is not a number (NaN)";
@@ -1349,11 +1350,11 @@ void zaddGenericCommand(redisClient *c, int incr) {
 		int success;
 		if (incr) {
 			success = RDS_incrby(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
-				(u32)(score), strtol(ele, NULL, 10));
+				(u32)(score), strtol(ele->ptr, NULL, 10));
 		}
 		else {
 			success = RDS_insert(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
-				(u32)(score), strtol(ele, NULL, 10));
+				(u32)(score), strtol(ele->ptr, NULL, 10));
 		}
 		if (!success) {
 			addReplyError(c, nanerr);
@@ -1376,12 +1377,13 @@ cleanup:
 			incr ? "zincr" : "zadd", key, c->db->id);
 	}
 }
+#endif
 
 int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 	zset *zs = zobj->ptr;
 	zskiplistNode *znode;
 	dictEntry *de;
-	robj* ele = createObject(REDIS_STRING, &member);
+	robj* ele = createObject(REDIS_STRING, (void*)member);
 	ele->encoding = REDIS_ENCODING_INT;
 	robj *curobj;
 	double curscore;
@@ -2890,7 +2892,7 @@ void zscoreCommand(redisClient *c) {
 }
 
 //TODO:RDS SAVE OLD COPY
-#if 0
+#if 1
 void zrankGenericCommand(redisClient *c, int reverse) {
     robj *key = c->argv[1];
     robj *ele = c->argv[2];
@@ -2953,6 +2955,7 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 }
 #endif
 
+#if 0
 void zrankGenericCommand(redisClient *c, int reverse) {
 	robj *key = c->argv[1];
 	robj *ele = c->argv[2];
@@ -3003,7 +3006,7 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 
 		ele = c->argv[2] = tryObjectEncoding(c->argv[2]);
 		rank = RDS_contains(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
-			strtol(ele, NULL, 10), 0);
+			strtol(ele->ptr, NULL, 10), 0);
 		if (rank >= 1) {
 			if (reverse) {
 				redisAssert(0);
@@ -3022,6 +3025,7 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 	}
 	*/
 }
+#endif
 
 int zrankGenericCommandLocal(robj* zobj, int member) {
 	zset *zs = zobj->ptr;
@@ -3029,7 +3033,8 @@ int zrankGenericCommandLocal(robj* zobj, int member) {
 	dictEntry *de;
 	double score;
 	// Use string type since it won't barf on delete
-	robj* ele = createObject(REDIS_STRING, &member);
+	robj* ele = createObject(REDIS_STRING, (void*)member);
+	/* Careful, member is stored in a pointer field but should be treated as an int */
 	ele->encoding = REDIS_ENCODING_INT;
 	unsigned long rank = 0;
 
@@ -3039,6 +3044,7 @@ int zrankGenericCommandLocal(robj* zobj, int member) {
 		rank = zslGetRank(zsl, score, ele);
 		redisAssertWithInfo(NULL, ele, rank); /* Existing elements always have a rank. */
 	}
+	//printf("Rank returned is %d, dict size is %d\n", rank, dictSize(zs->dict));
 	return rank;
 }
 
