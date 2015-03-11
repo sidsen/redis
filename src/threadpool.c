@@ -281,6 +281,7 @@ static void *threadpool_thread(void *threadpool)
 	RDS_StartThread(rds, thread_id);
 	
 	threadpool_task_t task;
+	int opCount = 0;
 	for (;;) {
 		/* Lock must be taken to wait on conditional variable */
 		pthread_mutex_lock(&(pool->lock));
@@ -304,6 +305,8 @@ static void *threadpool_thread(void *threadpool)
 
 		/* Unlock */
 		pthread_mutex_unlock(&(pool->lock));
+
+		//printf("Thread %d has processed %d requests\n", thread_id, ++opCount);
 
 		/* Get to work */
 		(*(task.function))(task.argument);

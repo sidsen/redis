@@ -406,7 +406,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_BIND_ADDR (server.bindaddr_count ? server.bindaddr[0] : NULL)
 
 /* Threads */
-#define REDIS_THREADPOOL_DEFAULT_SIZE 4
+#define REDIS_THREADPOOL_DEFAULT_SIZE 24
 #define REDIS_THREADPOOL_MAX_SIZE 1024
 #define REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE 1024
 
