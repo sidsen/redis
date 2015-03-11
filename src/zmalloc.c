@@ -76,6 +76,7 @@ void zlibc_free(void *ptr) {
 #define free(ptr) g_free(ptr)
 #elif defined(USE_TMALLOC)
 #define malloc _tmalloc
+#define calloc(count,size) _tcalloc(count,size)
 #define free _tfree
 #define realloc _trealloc
 #endif
