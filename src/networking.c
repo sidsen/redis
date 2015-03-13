@@ -121,7 +121,7 @@ redisClient *createClient(int fd) {
 	c->busy = 0;
 	c->ref_lock = zmalloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(c->ref_lock, NULL);
-	c->refcount = 0;
+	c->refcount = 1;
 	initClientBatchState(c);
 	c->disableSend = 0;
 
@@ -1388,6 +1388,8 @@ void processInputBuffer(redisClient *c) {
 	if (c->bstate.count > 0) {
 		pthread_mutex_lock(c->ref_lock);
 		c->refcount++;
+		if (c->refcount <= 1)
+			redisAssert(0);
 		pthread_mutex_unlock(c->ref_lock);
 		threadpool_add(server.tpool, (void(*)(void *)) callCommandAndResetClient, (void *)c, 0);
 	}

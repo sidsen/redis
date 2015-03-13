@@ -74,6 +74,7 @@ typedef long long mstime_t; /* millisecond time type. */
 #include "sparkline.h" /* ASII graphs API */
 //TODO:RDS
 #include "RDS.h"
+//extern struct RDS;
 
 #include "redisLog.h" /* moved logging for hiredis and RedisCli usage /*
 

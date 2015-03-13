@@ -83,11 +83,13 @@ static struct config {
     int loop;
     int idlemode;
     int dbnum;
+	int dualpercent;
     sds dbnumstr;
     char *tests;
     char *auth;
 } config;
 
+typedef struct _client *client;
 typedef struct _client {
     redisContext *context;
     sds obuf;
@@ -102,6 +104,9 @@ typedef struct _client {
                                such as auth and select are prefixed to the pipeline of
                                benchmark commands and discarded after the first send. */
     int prefixlen;          /* Size in bytes of the pending prefix commands */
+
+	client dualclient;       /* For dual/alternating workloads */
+	int dualpercent;         /* Percentage of the time this client should run */
 } *client;
 
 /* Prototypes */
@@ -138,37 +143,48 @@ static long long mstime(void) {
 #endif
 }
 
-static void freeClient(client c) {
-    listNode *ln;
-    aeDeleteFileEvent(config.el,(int)c->context->fd,AE_WRITABLE);
-    aeDeleteFileEvent(config.el,(int)c->context->fd,AE_READABLE);
+static void freeClientActual(client c) {
+	listNode *ln;
+	aeDeleteFileEvent(config.el, (int)c->context->fd, AE_WRITABLE);
+	aeDeleteFileEvent(config.el, (int)c->context->fd, AE_READABLE);
 #ifdef WIN32_IOCP
-    aeWinCloseSocket((int)c->context->fd);
-    c->context->fd = 0;
+	aeWinCloseSocket((int)c->context->fd);
+	c->context->fd = 0;
 #endif
-    redisFree(c->context);
-    sdsfree(c->obuf);
-    zfree(c->randptr);
-    zfree(c);
-    config.liveclients--;
-    ln = listSearchKey(config.clients,c);
-    assert(ln != NULL);
-    listDelNode(config.clients,ln);
+	redisFree(c->context);
+	sdsfree(c->obuf);
+	zfree(c->randptr);
+	config.liveclients--;
+	ln = listSearchKey(config.clients, c);
+	assert(ln != NULL);
+	listDelNode(config.clients, ln);
+	zfree(c);
+}
+
+static void freeClient(client c) {
+	if (c->dualclient) {
+		freeClientActual(c->dualclient);
+		freeClientActual(c);
+	}
 }
 
 static void freeAllClients(void) {
-    listNode *ln = config.clients->head, *next;
+    listNode *ln = config.clients->head;
 
     while(ln) {
-        next = ln->next;
+		/* This call will modify the client list, so just reset to the head afterwards */
         freeClient(ln->value);
-        ln = next;
+		ln = config.clients->head;
     }
 }
 
 static void resetClient(client c) {
     aeDeleteFileEvent(config.el,(int)c->context->fd,AE_WRITABLE);
     aeDeleteFileEvent(config.el,(int)c->context->fd,AE_READABLE);
+	if (c->dualclient) {
+		int restartThisClient = (random() % 101 <= c->dualpercent);
+		c = restartThisClient ? c : c->dualclient;
+	}
     aeCreateFileEvent(config.el,(int)c->context->fd,AE_WRITABLE,writeHandler,c);
     c->written = 0;
     c->pending = config.pipeline;
@@ -391,7 +407,7 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
  *    for arguments randomization.
  *
  * Even when cloning another client, prefix commands are applied if needed.*/
-static client createClient(char *cmd, size_t len, client from) {
+static client createClient(char *cmd, size_t len, client from, int start) {
     int j;
     client c = zmalloc(sizeof(struct _client));
 
@@ -461,6 +477,9 @@ static client createClient(char *cmd, size_t len, client from) {
     c->randptr = NULL;
     c->randlen = 0;
 
+	c->dualclient = NULL;
+	c->dualpercent = 100;
+	
     /* Find substrings in the output buffer that need to be randomized. */
     if (config.randomkeys) {
         if (from) {
@@ -490,7 +509,7 @@ static client createClient(char *cmd, size_t len, client from) {
             }
         }
     }
-    if (config.idlemode == 0)
+    if (config.idlemode == 0 && start)
         aeCreateFileEvent(config.el,c->context->fd,AE_WRITABLE,writeHandler,c);
     listAddNodeTail(config.clients,c);
     config.liveclients++;
@@ -501,7 +520,17 @@ static void createMissingClients(client c) {
     int n = 0;
 
     while(config.liveclients < config.numclients) {
-        createClient(NULL,0,c);
+		if (c->dualclient) {
+			int startFirst = (random() % 101 <= c->dualpercent);
+	        client c1 = createClient(NULL,0,c,startFirst);
+			client c2 = createClient(NULL, 0, c->dualclient,!startFirst);
+			c1->dualclient = c2;
+			c1->dualpercent = c->dualpercent;
+			c2->dualclient = c1;
+			c2->dualpercent = 100 - c->dualpercent;
+		} else {
+			createClient(NULL, 0, c, 1);
+		}
 
         /* Listen backlog is quite limited on most systems */
         if (++n > 64) {
@@ -552,7 +581,7 @@ static void benchmark(char *title, char *cmd, int len) {
     config.requests_issued = 0;
     config.requests_finished = 0;
 
-    c = createClient(cmd,len,NULL);
+    c = createClient(cmd,len,NULL, 1);
     createMissingClients(c);
 
     config.start = mstime();
@@ -561,6 +590,31 @@ static void benchmark(char *title, char *cmd, int len) {
 
     showLatencyReport();
     freeAllClients();
+}
+
+/* Same as above, but interleaves two cmds with a specified probability */
+static void dual_benchmark(char *title, char *cmd, int len, char* cmd2, int len2) {
+	client c, c2;
+
+	config.title = title;
+	config.requests_issued = 0;
+	config.requests_finished = 0;
+
+	int startFirst = (random() % 101 < config.dualpercent);
+	c = createClient(cmd, len, NULL, startFirst);
+	c2 = createClient(cmd2, len2, NULL, !startFirst);
+	c->dualclient = c2;
+	c->dualpercent = config.dualpercent;
+	c2->dualclient = c;
+	c2->dualpercent = 100 - config.dualpercent;
+	createMissingClients(c);
+
+	config.start = mstime();
+	aeMain(config.el);
+	config.totlatency = mstime() - config.start;
+
+	showLatencyReport();
+	freeAllClients();
 }
 
 /* Returns number of consumed options. */
@@ -616,17 +670,22 @@ int parseOptions(int argc, const char **argv) {
             config.loop = 1;
         } else if (!strcmp(argv[i],"-I")) {
             config.idlemode = 1;
-        } else if (!strcmp(argv[i],"-t")) {
-            if (lastarg) goto invalid;
-            /* We get the list of tests to run as a string in the form
-             * get,set,lrange,...,test_N. Then we add a comma before and
-             * after the string in order to make sure that searching
-             * for ",testname," will always get a match if the test is
-             * enabled. */
-            config.tests = sdsnew(",");
-            config.tests = sdscat(config.tests,(char*)argv[++i]);
-            config.tests = sdscat(config.tests,",");
-            sdstolower(config.tests);
+		} else if (!strcmp(argv[i], "-t")) {
+			if (lastarg) goto invalid;
+			/* We get the list of tests to run as a string in the form
+			 * get,set,lrange,...,test_N. Then we add a comma before and
+			 * after the string in order to make sure that searching
+			 * for ",testname," will always get a match if the test is
+			 * enabled. */
+			config.tests = sdsnew(",");
+			config.tests = sdscat(config.tests, (char*)argv[++i]);
+			config.tests = sdscat(config.tests, ",");
+			sdstolower(config.tests);
+		} else if (!strcmp(argv[i], "-f")) {
+			config.dualpercent = atoi(argv[++i]);
+			if (config.dualpercent < 0 || config.dualpercent > 100) {
+				goto invalid;
+			}
         } else if (!strcmp(argv[i],"--dbnum")) {
             if (lastarg) goto invalid;
             config.dbnum = atoi(argv[++i]);
@@ -673,6 +732,8 @@ usage:
 " -t <tests>         Only run the comma separated list of tests. The test\n"
 "                    names are the same as the ones produced as output.\n"
 " -I                 Idle mode. Just open N idle connections and wait.\n\n"
+" -f <percent>       For mixed tests, the percent of the time the first command\n"
+"                    is called (the dual command runs at (100 - percent).\n"
 "Examples:\n\n"
 " Run the benchmark with the default configuration against 127.0.0.1:6379:\n"
 "   $ redis-benchmark\n\n"
@@ -767,6 +828,7 @@ int main(int argc, const char **argv) {
     config.tests = NULL;
     config.dbnum = 0;
     config.auth = NULL;
+	config.dualpercent = 100;
 
     i = parseOptions(argc,argv);
     argc -= i;
@@ -780,7 +842,7 @@ int main(int argc, const char **argv) {
 
     if (config.idlemode) {
         printf("Creating %d idle connections and waiting forever (Ctrl+C when done)\n", config.numclients);
-        c = createClient("",0,NULL); /* will never receive a reply */
+        c = createClient("",0,NULL,0); /* will never receive a reply */
         createMissingClients(c);
         aeMain(config.el);
         /* and will wait for every */
@@ -861,7 +923,7 @@ int main(int argc, const char **argv) {
             free(cmd);
         }
 
-		if (test_is_selected("zscore") || test_is_selected("zincrby") || test_is_selected("zrank"))
+		if (test_is_selected("zadd")) // || test_is_selected("zscore") || test_is_selected("zincrby") || test_is_selected("zrank"))
 		{
 			len = redisFormatCommand(&cmd, "ZADD mysortedset __rand_int__ __rand_int__");
 			benchmark("ZADD (needed to benchmark ZSCORE,ZINCRBY)", cmd, len);
@@ -877,7 +939,7 @@ int main(int argc, const char **argv) {
 
 		if (test_is_selected("zincrby"))
 		{
-			len = redisFormatCommand(&cmd, "ZINCRBY mysortedset 3.0 __rand_int__");
+			len = redisFormatCommand(&cmd, "ZINCRBY mysortedset 3 __rand_int__");
 			benchmark("ZINCRBY", cmd, len);
 			free(cmd);
 		}
@@ -887,6 +949,17 @@ int main(int argc, const char **argv) {
 			len = redisFormatCommand(&cmd, "ZRANK mysortedset __rand_int__");
 			benchmark("ZRANK", cmd, len);
 			free(cmd);
+		}
+
+		if (test_is_selected("zmixed"))
+		{
+			char *cmd2;
+			int len2;
+			len = redisFormatCommand(&cmd, "ZRANK mysortedset __rand_int__");
+			len2 = redisFormatCommand(&cmd2, "ZINCRBY mysortedset 3 __rand_int__");
+			dual_benchmark("ZRANK/ZINCRBY", cmd, len, cmd2, len2);
+			free(cmd);
+			free(cmd2);
 		}
 
         if (test_is_selected("lrange") ||

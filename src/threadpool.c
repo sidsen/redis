@@ -163,6 +163,7 @@ int threadpool_add(threadpool_t *pool, void(*function)(void *),
 		/* Are we full ? */
 		if (pool->count == pool->queue_size) {
 			err = threadpool_queue_full;
+			printf("Queue IS FULL!!\n");
 			break;
 		}
 
@@ -277,7 +278,7 @@ static void *threadpool_thread(void *threadpool)
 	u32 thread_id = AtomicInc32(&threadCounter) - 1;
 
 	/* Pin the thread */
-	SetThreadAffinityMask(GetCurrentThread(), 1 << (thread_id % MAX_THREADS)); 
+	SetThreadAffinityMask(GetCurrentThread(), (DWORD_PTR)1 << (thread_id % MAX_THREADS)); 
 	RDS_StartThread(rds, thread_id);
 	
 	threadpool_task_t task;

@@ -433,6 +433,7 @@ RDS* RDS_new() {
 	//printf("\n-----------------> NEW %d\n", 1);
 	RDS_Start(rds);
 	thread_ids = dictCreate(&IntDictType, NULL);
+	dictExpand(thread_ids, MAX_THREADS);
 	return rds;
 }
 

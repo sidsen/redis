@@ -237,7 +237,7 @@ int replace_rename(const char *src, const char *dest);
 
 int pthread_create(pthread_t *thread, const void *unused,
                     void *(*start_routine)(void*), void *arg);
-
+int win32_pthread_join(pthread_t *thread, void **value_ptr);
 pthread_t pthread_self(void);
 
 typedef struct {
@@ -252,6 +252,7 @@ int pthread_cond_init(pthread_cond_t *cond, const void *unused);
 int pthread_cond_destroy(pthread_cond_t *cond);
 int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex);
 int pthread_cond_signal(pthread_cond_t *cond);
+int pthread_cond_broadcast(pthread_cond_t *cond);
 
 int pthread_detach (pthread_t thread);
 int pthread_sigmask(int how, const sigset_t *set, sigset_t *oldset);

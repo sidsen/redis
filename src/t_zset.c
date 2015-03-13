@@ -1174,7 +1174,7 @@ void zsetConvert(robj *zobj, int encoding) {
  * Sorted set commands
  *----------------------------------------------------------------------------*/
 
-#if 1
+#if 0
 /* This generic command implements both ZADD and ZINCRBY. */
 void zaddGenericCommand(redisClient *c, int incr) {
     static char *nanerr = "resulting score is not a number (NaN)";
@@ -1318,7 +1318,7 @@ cleanup:
 }
 #endif
 
-#if 0
+#if 1
 /* This generic command implements both ZADD and ZINCRBY. */
 void zaddGenericCommand(redisClient *c, int incr) {
 	static char *nanerr = "resulting score is not a number (NaN)";
@@ -1351,6 +1351,7 @@ void zaddGenericCommand(redisClient *c, int incr) {
 		if (incr) {
 			success = RDS_incrby(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
 				(u32)(score), strtol(ele->ptr, NULL, 10));
+			//printf("ZINCRBY called!\n");
 		}
 		else {
 			success = RDS_insert(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
@@ -2892,7 +2893,7 @@ void zscoreCommand(redisClient *c) {
 }
 
 //TODO:RDS SAVE OLD COPY
-#if 1
+#if 0
 void zrankGenericCommand(redisClient *c, int reverse) {
     robj *key = c->argv[1];
     robj *ele = c->argv[2];
@@ -2955,7 +2956,7 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 }
 #endif
 
-#if 0
+#if 1
 void zrankGenericCommand(redisClient *c, int reverse) {
 	robj *key = c->argv[1];
 	robj *ele = c->argv[2];
