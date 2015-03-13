@@ -2054,6 +2054,7 @@ void call(redisClient *c, int flags) {
     long long dirty, start, duration;
     int client_old_flags = c->flags;
 
+//#if 0
 	pthread_mutex_lock(server.lock);
     /* Sent the command to clients in MONITOR mode, only if the commands are
      * not generated from reading an AOF. */
@@ -2070,7 +2071,9 @@ void call(redisClient *c, int flags) {
     dirty = server.dirty;
     start = ustime();
 	pthread_mutex_unlock(server.lock);
+//#endif
     c->cmd->proc(c);
+//#if 0
 	pthread_mutex_lock(server.lock);
     duration = ustime()-start;
     dirty = server.dirty-dirty;
@@ -2135,6 +2138,7 @@ void call(redisClient *c, int flags) {
     }
     server.stat_numcommands++;
 	pthread_mutex_unlock(server.lock);
+//#endif
 }
 
 int timeEventProcessInputBufferHandler(aeEventLoop *el, long long id, void *clientData) {
@@ -2173,10 +2177,12 @@ void callCommandAndResetClient(redisClient *c) {
 	execBatch(c);
 	c->noReply = 1;
 	/* Experiment with duplicating work to relieve RPC bottleneck */
-	//execBatch(c);
-	//execBatch(c);
-	//execBatch(c);
-	//execBatch(c);
+	/*
+	execBatch(c);
+	execBatch(c);
+	execBatch(c);
+	execBatch(c);
+	*/
 	c->noReply = 0;
 	discardBatch(c);
 	c->disableSend = 0;
