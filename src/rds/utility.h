@@ -102,6 +102,7 @@ typedef  int8_t       i8;
 
 #endif
 
+/* From 48-proc machine
 #define MAX_THREADS  48
 
 #define NUM_NODES                 8
@@ -110,6 +111,17 @@ typedef  int8_t       i8;
 #define NUM_NODES_PER_SOCKET      2
 #define NUM_THREADS_PER_SOCKET    12   // NUM_NODES_PER_SOCKET * NUM_THREADS_PER_NODE
 #define MAX_COMBINE       6
+*/
+
+#define MAX_THREADS  80
+
+#define NUM_NODES                 4
+#define NUM_SOCKETS               4
+#define NUM_THREADS_PER_NODE      20
+#define NUM_NODES_PER_SOCKET      1
+#define NUM_THREADS_PER_SOCKET    20   // NUM_NODES_PER_SOCKET * NUM_THREADS_PER_NODE
+#define MAX_COMBINE				  NUM_THREADS_PER_NODE
+
 
 #define NUM_THR_NODE              NUM_THREADS_PER_NODE
 

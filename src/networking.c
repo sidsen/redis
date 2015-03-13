@@ -1393,8 +1393,9 @@ void processInputBuffer(redisClient *c) {
 			redisAssert(0);
 		pthread_mutex_unlock(c->ref_lock);
 		threadpool_add(server.tpool, (void(*)(void *)) callCommandAndResetClient, (void *)c, 0);
+	} else {
+		c->busy = 0;
 	}
-	c->busy = 0;
 	pthread_mutex_unlock(c->lock);
 }
 
@@ -1407,12 +1408,15 @@ void clientReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 	/* if trylock fails, simply carry on, until next time */
 	if (!rc) {
 		if (c->busy) {
+			aeWinReceiveDone(c->fd);
 			pthread_mutex_unlock(c->lock);
 			return;
 		}
 		c->busy = 1;
 		readQueryFromClient(privdata);
-		c->busy = 0;
+		//c->busy = 0;
+	} else {
+		aeWinReceiveDone(c->fd);
 	}
 }
 
