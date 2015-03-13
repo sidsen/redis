@@ -3048,6 +3048,9 @@ int zrankGenericCommandLocal(robj* zobj, int member) {
 	if (de != NULL) {
 		score = *(double*)dictGetVal(de);
 		rank = zslGetRank(zsl, score, ele);
+		//TODO:PERF Add spin
+		//for (int i = 0; i < 1000; i++)
+		//	_mm_pause();
 		redisAssertWithInfo(NULL, ele, rank); /* Existing elements always have a rank. */
 	}
 	//printf("Rank returned is %d, dict size is %d\n", rank, dictSize(zs->dict));
