@@ -124,6 +124,7 @@ redisClient *createClient(int fd) {
 	c->refcount = 1;
 	initClientBatchState(c);
 	c->disableSend = 0;
+	c->noReply = 0;
 
     return c;
 }

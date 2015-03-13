@@ -59,6 +59,8 @@ const string cMaxMemory = "maxmemory";
 
 const string cSentinel = "sentinel";
 
+const string cThreads = "threads";
+
 const string cYes = "yes";
 const string cNo = "no";
 const string cDefaultSyslogIdent = "redis";

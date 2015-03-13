@@ -1876,8 +1876,7 @@ void initServer(void) {
 
 	//if (server.threadpool_size == -1)
 	//if ((server.threadpool_size = (getNumCPUs() * 2)) < REDIS_THREADPOOL_DEFAULT_SIZE)
-	//server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
-	server.threadpool_size = 40;
+	//server.threadpool_size = 40;
 	redisLog(REDIS_NOTICE, "Starting %d worker threads with a threadpool queue of size %d.", server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE);
 	server.tpool = threadpool_create(server.threadpool_size, REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE, 0); // THREDIS TODO - queue size should be configurable
 	server.lock = zmalloc(sizeof(pthread_mutex_t));
@@ -2172,6 +2171,13 @@ void callCommandAndResetClient(redisClient *c) {
 	/* If we are in this function, then we will always have a batch request */
 	redisAssert(c->bstate.count > 0);
 	execBatch(c);
+	c->noReply = 1;
+	/* Experiment with duplicating work to relieve RPC bottleneck */
+	//execBatch(c);
+	//execBatch(c);
+	//execBatch(c);
+	//execBatch(c);
+	c->noReply = 0;
 	discardBatch(c);
 	c->disableSend = 0;
 

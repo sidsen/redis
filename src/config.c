@@ -542,6 +542,9 @@ void loadServerConfigFromString(char *config) {
                 err = sentinelHandleConfiguration(argv+1,argc-1);
                 if (err) goto loaderr;
             }
+		}
+		else if (!strcasecmp(argv[0], "threads") && argc == 2) {
+			server.threadpool_size = strtoll(argv[1], NULL, 10);
 #ifdef _WIN32
 		} else if (!strcasecmp(argv[0],"maxheap")) {
 			// ignore. This is taken care of in the qfork code.

@@ -164,8 +164,8 @@ static void freeClientActual(client c) {
 static void freeClient(client c) {
 	if (c->dualclient) {
 		freeClientActual(c->dualclient);
-		freeClientActual(c);
 	}
+	freeClientActual(c);
 }
 
 static void freeAllClients(void) {

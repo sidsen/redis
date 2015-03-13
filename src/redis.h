@@ -565,6 +565,7 @@ typedef struct redisClient {
     int bufpos;
     char buf[REDIS_REPLY_CHUNK_BYTES];
 	int disableSend;
+	int noReply;
 } redisClient;
 
 struct saveparam {

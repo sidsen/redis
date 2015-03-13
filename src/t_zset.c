@@ -1365,10 +1365,12 @@ void zaddGenericCommand(redisClient *c, int incr) {
 		}
 	}
 
-	if (incr) /* ZINCRBY */
-		addReplyDouble(c, score);
-	else /* ZADD */
-		addReplyLongLong(c, added);
+	if (!c->noReply) {
+		if (incr) /* ZINCRBY */
+			addReplyDouble(c, score);
+		else /* ZADD */
+			addReplyLongLong(c, added);
+	}
 
 cleanup:
 	zfree(scores);
@@ -3008,6 +3010,9 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 		ele = c->argv[2] = tryObjectEncoding(c->argv[2]);
 		rank = RDS_contains(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
 			strtol(ele->ptr, NULL, 10), 0);
+		if (c->noReply) {
+			return;
+		}
 		if (rank >= 1) {
 			if (reverse) {
 				redisAssert(0);
