@@ -50,7 +50,7 @@
 */
 
 typedef struct {
-	void(*function)(void *);
+	void(*function)(void *, int);
 	void *argument;
 } threadpool_task_t;
 
@@ -309,8 +309,12 @@ static void *threadpool_thread(void *threadpool)
 
 		//printf("Thread %d has processed %d requests\n", thread_id, ++opCount);
 
+		/* Set the thread id here (breaking abstraction, not great) */
+
 		/* Get to work */
-		(*(task.function))(task.argument);
+		(*(task.function))(task.argument, thread_id);
+
+		//fprintf(stderr, "Thread %d is running on core %d\n", thread_id, GetCurrentProcessorNumber());
 	}
 
 	pool->started--;

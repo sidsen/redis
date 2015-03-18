@@ -237,17 +237,34 @@ inline u32 UpdateFromLogForReads(RDS *rds, int thrid, u32 to) {
 
 
 
-u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
+u32 Combine_incrby(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 nextOp;
 	u32 counter, startInd, finalInd;
 	volatile u32 resp = MAX_UINT32;
 	u32 myIndex = thrid % NUM_THREADS_PER_NODE;
+
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg1 = arg1;
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg2 = arg2;
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp = &resp;
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].op = op;
 
 	//printf("\n-----------------> Combine %d\n", 0);
+
+	//printf("Thread %d is running on processor %d\n", thrid, GetCurrentProcessorNumber());
+	//fflush(stdout);
+	do {
+		while (rds->local[rds->leader[thrid].val].replica->combinerLock.val != 0) {
+			_mm_pause();
+		}
+		if ((CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1)) == 0) {
+			//for (int i = 0; i < 5000; i++)
+			//	_mm_pause();
+			resp = Execute_local(rds, thrid, op, rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg1, rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg2);
+			rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
+			return resp;
+		}
+	} while (1);
+
 
 	do {
 		while ((rds->local[rds->leader[thrid].val].replica->combinerLock.val != 0) && (((rds->local[rds->leader[thrid].val].replica->slot[myIndex].op != 0)))) {
@@ -261,9 +278,8 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			return resp;
 		}
 
-		
-
 		if ((CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1)) == 0) {
+
 			if (rds->local[rds->leader[thrid].val].replica->slot[myIndex].op == 0) {
 				redisAssert(resp != MAX_UINT32);
 				rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
@@ -282,11 +298,9 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 					rds->local[rds->leader[thrid].val].replica->slot[index].op |= (1 << CYCLE_BITS);
 				}
 			}
-			
 
+			/*
 			NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
-
-
 			
 
 			if (howMany > 0) {
@@ -327,6 +341,7 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
 			if (rds->local[rds->leader[thrid].val].replica->localTail < startInd) rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
 			
+			*/
 
 			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {
 				
@@ -341,12 +356,11 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 			
 
-			if (howMany) UpdateMin(rds, thrid, startInd, howMany);
+			//if (howMany) UpdateMin(rds, thrid, startInd, howMany);
 			
 
-			NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
+			//NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
 			rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
-			
 
 			return *(rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp);
 		}
@@ -361,6 +375,112 @@ inline bool BetweenLocalAndTail(RDS *rds, u32 readTail, u32 localTail, u32 tail)
 	else {
 		return ((localTail < readTail) || (readTail <= tail));
 	}
+}
+
+u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
+	u32 nextOp;
+	u32 counter, startInd, finalInd;
+	volatile u32 resp = MAX_UINT32;
+	u32 myIndex = thrid % NUM_THREADS_PER_NODE;
+
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg1 = arg1;
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg2 = arg2;
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp = &resp;
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].op = op;
+
+
+	do {
+		while ((rds->local[rds->leader[thrid].val].replica->combinerLock.val != 0) && (((rds->local[rds->leader[thrid].val].replica->slot[myIndex].op != 0)))) {
+			_mm_pause();
+		}
+		if (((rds->local[rds->leader[thrid].val].replica->slot[myIndex].op == 0))) {
+			// Not combiner
+			while (resp == MAX_UINT32) {
+				_mm_pause();
+			}
+			return resp;
+		}
+
+		if ((CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1)) == 0) {
+
+			if (rds->local[rds->leader[thrid].val].replica->slot[myIndex].op == 0) {
+				redisAssert(resp != MAX_UINT32);
+				rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
+				return resp;
+			}
+
+
+			// Combiner
+			int howMany = 0;
+			u32 index;
+			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {
+				if (rds->local[rds->leader[thrid].val].replica->slot[index].op != EMPTY) {
+					if (rds->local[rds->leader[thrid].val].replica->slot[index].op != CONTAINS) {
+						++howMany;
+					}
+					rds->local[rds->leader[thrid].val].replica->slot[index].op |= (1 << CYCLE_BITS);
+				}
+			}
+
+			NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
+
+			if (howMany > 0) {
+				startInd = AppendAndUpdate(rds, thrid, howMany);
+				counter = startInd;
+				finalInd = ADDN(startInd, howMany);
+
+
+
+				for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {
+					if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
+						nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
+						if (nextOp != CONTAINS) {
+							rds->sharedLog.log[counter].arg1 = rds->local[rds->leader[thrid].val].replica->slot[index].arg1;
+							rds->sharedLog.log[counter].arg2 = rds->local[rds->leader[thrid].val].replica->slot[index].arg2;
+
+							if (counter < rds->local[rds->leader[thrid].val].replica->localTail) {
+								rds->sharedLog.log[counter].op = nextOp | ((1 - rds->local[rds->leader[thrid].val].replica->localBit) << CYCLE_BITS);
+							}
+							else {
+								rds->sharedLog.log[counter].op = nextOp | (rds->local[rds->leader[thrid].val].replica->localBit << CYCLE_BITS);
+							}
+
+							counter = INC(counter);
+						}
+
+					}
+				}
+
+			}
+			else {
+				finalInd = startInd = rds->sharedLog.logTail.val;
+			}
+
+
+			UpdateFromLog(rds, thrid, startInd);
+			rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
+			if (rds->local[rds->leader[thrid].val].replica->localTail < startInd) rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
+
+
+			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {
+
+				if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
+
+					nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
+					rds->local[rds->leader[thrid].val].replica->slot[index].op = EMPTY;
+					*(rds->local[rds->leader[thrid].val].replica->slot[index].resp) = Execute_local(rds, thrid, nextOp, rds->local[rds->leader[thrid].val].replica->slot[index].arg1, rds->local[rds->leader[thrid].val].replica->slot[index].arg2);
+				}
+			}
+
+
+			if (howMany) UpdateMin(rds, thrid, startInd, howMany);
+
+			NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
+			rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
+
+			return *(rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp);
+		}
+	} while (1);
 }
 
 
@@ -469,7 +589,6 @@ u32 RDS_insert(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 
 u32 RDS_incrby(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 	//printf("\n-----------------> INSERT %d\n", thrid);
-	//TODO:RDS
 	return Combine(rds, thrid, INCRBY, arg1, arg2);
 }
 

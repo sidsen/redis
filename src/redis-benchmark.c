@@ -182,7 +182,7 @@ static void resetClient(client c) {
     aeDeleteFileEvent(config.el,(int)c->context->fd,AE_WRITABLE);
     aeDeleteFileEvent(config.el,(int)c->context->fd,AE_READABLE);
 	if (c->dualclient) {
-		int restartThisClient = (random() % 101 <= c->dualpercent);
+		int restartThisClient = (random() % 100 < c->dualpercent);
 		c = restartThisClient ? c : c->dualclient;
 	}
     aeCreateFileEvent(config.el,(int)c->context->fd,AE_WRITABLE,writeHandler,c);

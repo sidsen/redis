@@ -42,6 +42,7 @@ void zlibc_free(void *ptr) {
 #include <string.h>
 #ifdef _WIN32
 #include "win32_Interop/win32fixes.h"
+#include "utility.h"
 #else
 #include <pthread.h>
 #endif
@@ -79,14 +80,23 @@ void zlibc_free(void *ptr) {
 #define calloc(count,size) _tcalloc(count,size)
 #define free _tfree
 #define realloc _trealloc
+/* Use atomic inc/dec of the used memory stats, as it seriously affects 
+   scalability of tmalloc */
+#define HAVE_ATOMIC
 #endif
 
 #if defined(__ATOMIC_RELAXED)
 #define update_zmalloc_stat_add(__n) __atomic_add_fetch(&used_memory, (__n), __ATOMIC_RELAXED)
 #define update_zmalloc_stat_sub(__n) __atomic_sub_fetch(&used_memory, (__n), __ATOMIC_RELAXED)
 #elif defined(HAVE_ATOMIC)
+#ifdef _WIN32
+//TODO:PERF DISABLE FOR NOW, CAUSING MASSIVE PERF DROP
+#define update_zmalloc_stat_add(__n) (0) //FetchAndAdd64(&used_memory, (__n))
+#define update_zmalloc_stat_sub(__n) (0) //FetchAndAdd64(&used_memory, -1*(__n))
+#else
 #define update_zmalloc_stat_add(__n) __sync_add_and_fetch(&used_memory, (__n))
 #define update_zmalloc_stat_sub(__n) __sync_sub_and_fetch(&used_memory, (__n))
+#endif
 #else
 #define update_zmalloc_stat_add(__n) do { \
     pthread_mutex_lock(&used_memory_mutex); \
@@ -102,6 +112,7 @@ void zlibc_free(void *ptr) {
 
 #endif
 
+/* These are causing */
 #define update_zmalloc_stat_alloc(__n) do { \
     size_t _n = (__n); \
     if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \

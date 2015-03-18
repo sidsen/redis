@@ -467,6 +467,9 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 				if (!rfired || fe->wfileProc != fe->rfileProc)
 					fe->wfileProc(eventLoop, fd, fe->clientData, mask);
 			}
+
+			//fprintf(stderr, "MAIN THREAD is running on core %d\n", GetCurrentProcessorNumber());
+
 			processed++;
         }
     }

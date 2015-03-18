@@ -122,6 +122,8 @@ redisClient *createClient(int fd) {
 	c->ref_lock = zmalloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(c->ref_lock, NULL);
 	c->refcount = 1;
+	/* Set invalid current thread id (must be overwritten before being used) */
+	c->currthread = -1;
 	initClientBatchState(c);
 	c->disableSend = 0;
 	c->noReply = 0;
@@ -1408,15 +1410,15 @@ void clientReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 	/* if trylock fails, simply carry on, until next time */
 	if (!rc) {
 		if (c->busy) {
-			aeWinReceiveDone(c->fd);
+			//aeWinReceiveDone(c->fd);
 			pthread_mutex_unlock(c->lock);
 			return;
 		}
 		c->busy = 1;
 		readQueryFromClient(privdata);
-		//c->busy = 0;
+		c->busy = 0;
 	} else {
-		aeWinReceiveDone(c->fd);
+		//aeWinReceiveDone(c->fd);
 	}
 }
 

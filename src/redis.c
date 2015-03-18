@@ -2054,7 +2054,7 @@ void call(redisClient *c, int flags) {
     long long dirty, start, duration;
     int client_old_flags = c->flags;
 
-//#if 0
+#if 0
 	pthread_mutex_lock(server.lock);
     /* Sent the command to clients in MONITOR mode, only if the commands are
      * not generated from reading an AOF. */
@@ -2071,9 +2071,9 @@ void call(redisClient *c, int flags) {
     dirty = server.dirty;
     start = ustime();
 	pthread_mutex_unlock(server.lock);
-//#endif
+#endif
     c->cmd->proc(c);
-//#if 0
+#if 0
 	pthread_mutex_lock(server.lock);
     duration = ustime()-start;
     dirty = server.dirty-dirty;
@@ -2138,7 +2138,7 @@ void call(redisClient *c, int flags) {
     }
     server.stat_numcommands++;
 	pthread_mutex_unlock(server.lock);
-//#endif
+#endif
 }
 
 int timeEventProcessInputBufferHandler(aeEventLoop *el, long long id, void *clientData) {
@@ -2164,11 +2164,12 @@ int timeEventProcessInputBufferHandler(aeEventLoop *el, long long id, void *clie
 		return 0;
 }
 
-void callCommandAndResetClient(redisClient *c) {
+void callCommandAndResetClient(redisClient *c, int thread_id) {
 	/** thread start */
 
 	/* Need to grab/release client lock from same thread (else undefined behavior) */
 	pthread_mutex_lock(c->lock);
+	c->currthread = thread_id;
 
 	/* Disable sends for now, since we want to schedule the send after processing the batch */
 	c->disableSend = 1;
@@ -2176,7 +2177,25 @@ void callCommandAndResetClient(redisClient *c) {
 	redisAssert(c->bstate.count > 0);
 	execBatch(c);
 	c->noReply = 1;
+
 	/* Experiment with duplicating work to relieve RPC bottleneck */
+	if (strcmp(c->bstate.commands[0].cmd->name, "zrank") == 0 || strcmp(c->bstate.commands[0].cmd->name, "zincrby") == 0) {
+		u32 result = AtomicDec32(&threadCounter);
+		fprintf(stdout, "Threadcounter is %d\n", result);
+		fflush(stdout);
+		while (threadCounter != 0)
+			_mm_pause();
+		u64 startTime = ustime();
+		for (int i = 0; i < 5000; i++) {
+			execBatch(c);
+		}
+		u64 endTime = ustime();
+		fprintf(stdout, "Total operations performed on proc %d (accessing replica %d) is %d, done in %f ms\n", GetCurrentProcessorNumber(), rds->leader[c->currthread].val,
+			5001 * c->bstate.count, (endTime - startTime) / 1000.0);
+		fflush(stdout);
+		ExitThread(1);
+	}
+
 	/*
 	execBatch(c);
 	execBatch(c);
@@ -2195,6 +2214,7 @@ void callCommandAndResetClient(redisClient *c) {
 
 	/* reset client and unlock */
 	resetClient(c);
+	c->currthread = -1;
 	pthread_mutex_unlock(c->lock);
 
 	/* Enable send to occur */
@@ -3772,6 +3792,10 @@ int main(int argc, char **argv) {
     if (server.maxmemory > 0 && server.maxmemory < 1024*1024) {
         redisLog(REDIS_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
     }
+
+	/* Pin the event loop thread to the highest processor to avoid conflicts with
+	   the threadpool */
+	SetThreadAffinityMask(GetCurrentThread(), (DWORD_PTR)1 << (MAX_THREADS - 1));
 
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeMain(server.el);

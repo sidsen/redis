@@ -560,6 +560,7 @@ typedef struct redisClient {
 	pthread_mutex_t *ref_lock;  /* Controls when client is reset given concurrency */
 	int refcount;
 	multiState bstate;          /* Batch state for issuing pipelined requests to threadpool */
+	int currthread;
 
     /* Response buffer */
     int bufpos;
@@ -1134,6 +1135,7 @@ void freeSetObject(robj *o);
 void freeZsetObject(robj *o);
 void freeHashObject(robj *o);
 robj *createObject(int type, void *ptr);
+void initObject(robj *o, int type, void *ptr);
 robj *createStringObject(char *ptr, size_t len);
 robj *dupStringObject(robj *o);
 int isObjectRepresentableAsLongLong(robj *o, long long *llongval);

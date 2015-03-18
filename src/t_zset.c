@@ -1326,7 +1326,7 @@ void zaddGenericCommand(redisClient *c, int incr) {
 	robj *ele;
 	robj *zobj;
 	robj *curobj;
-	double score = 0, *scores = NULL, curscore = 0.0;
+	double score = 0, curscore = 0.0;
 	int j, elements = (c->argc - 2) / 2;
 	int added = 0, updated = 0, keyLocked = 0;
 
@@ -1338,18 +1338,18 @@ void zaddGenericCommand(redisClient *c, int incr) {
 	/* Start parsing all the scores, we need to emit any syntax error
 	* before executing additions to the sorted set, as the command should
 	* either execute fully or nothing at all. */
-	scores = zmalloc(sizeof(double)*elements);
+	//scores = zmalloc(sizeof(double)*elements);
+	double scores[10];
 	for (j = 0; j < elements; j++) {
 		if (getDoubleFromObjectOrReply(c, c->argv[2 + j * 2], &scores[j], NULL)
 			!= REDIS_OK) goto cleanup;
 	}
-
 	for (j = 0; j < elements; j++) {
 		score = scores[j];
 		ele = c->argv[3 + j * 2] = tryObjectEncoding(c->argv[3 + j * 2]);
 		int success;
 		if (incr) {
-			success = RDS_incrby(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
+			success = RDS_incrby(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),	
 				(u32)(score), strtol(ele->ptr, NULL, 10));
 			//printf("ZINCRBY called!\n");
 		}
@@ -1373,7 +1373,7 @@ void zaddGenericCommand(redisClient *c, int incr) {
 	}
 
 cleanup:
-	zfree(scores);
+	//zfree(scores);
 	if (added || updated) {
 		signalModifiedKey(c->db, key);
 		notifyKeyspaceEvent(REDIS_NOTIFY_ZSET,
@@ -1386,12 +1386,13 @@ int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 	zset *zs = zobj->ptr;
 	zskiplistNode *znode;
 	dictEntry *de;
-	robj* ele = createObject(REDIS_STRING, (void*)member);
-	ele->encoding = REDIS_ENCODING_INT;
 	robj *curobj;
 	double curscore;
+	robj ele;
 
-	de = dictFind(zs->dict, ele);
+	initObject(&ele, REDIS_STRING, (void*)member);
+	ele.encoding = REDIS_ENCODING_INT;
+	de = dictFind(zs->dict, &ele);
 	if (de != NULL) {
 		curobj = dictGetKey(de);
 		curscore = *(double*)dictGetVal(de);
@@ -1416,6 +1417,9 @@ int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 		}
 	}
 	else {
+		/* Dynamically allocate the object since it is being inserted for the first time */
+		robj *ele = createObject(REDIS_STRING, (void*)member);
+		ele->encoding = REDIS_ENCODING_INT;
 		znode = zslInsert(zs->zsl, score, ele);
 		incrRefCount(ele); /* Inserted in skiplist. */
 		redisAssertWithInfo(NULL, NULL, dictAdd(zs->dict, ele, &znode->score) == DICT_OK);
@@ -3008,8 +3012,7 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 		double score;
 
 		ele = c->argv[2] = tryObjectEncoding(c->argv[2]);
-		rank = RDS_contains(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
-			strtol(ele->ptr, NULL, 10), 0);
+		rank = RDS_contains(rds, dictFetchValue(thread_ids, GetCurrentThreadId()), strtol(ele->ptr, NULL, 10), 0);
 		if (c->noReply) {
 			return;
 		}
@@ -3039,19 +3042,20 @@ int zrankGenericCommandLocal(robj* zobj, int member) {
 	dictEntry *de;
 	double score;
 	// Use string type since it won't barf on delete
-	robj* ele = createObject(REDIS_STRING, (void*)member);
+	robj ele;
+	initObject(&ele, REDIS_STRING, (void*)member);
 	/* Careful, member is stored in a pointer field but should be treated as an int */
-	ele->encoding = REDIS_ENCODING_INT;
+	ele.encoding = REDIS_ENCODING_INT;
 	unsigned long rank = 0;
 
-	de = dictFind(zs->dict, ele);
+	de = dictFind(zs->dict, &ele);
 	if (de != NULL) {
 		score = *(double*)dictGetVal(de);
-		rank = zslGetRank(zsl, score, ele);
+		rank = zslGetRank(zsl, score, &ele);
 		//TODO:PERF Add spin
-		//for (int i = 0; i < 1000; i++)
+		//for (int i = 0; i < 10000; i++)
 		//	_mm_pause();
-		redisAssertWithInfo(NULL, ele, rank); /* Existing elements always have a rank. */
+		redisAssertWithInfo(NULL, &ele, rank); /* Existing elements always have a rank. */
 	}
 	//printf("Rank returned is %d, dict size is %d\n", rank, dictSize(zs->dict));
 	return rank;

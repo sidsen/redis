@@ -49,8 +49,18 @@ robj *createObject(int type, void *ptr) {
     o->refcount = 1;
 
     /* Set the LRU to the current lruclock (minutes resolution). */
-    o->lru = server.lruclock;
+	o->lru = server.lruclock;
     return o;
+}
+
+void initObject(robj *o, int type, void *ptr) {
+	o->type = type;
+	o->encoding = REDIS_ENCODING_RAW;
+	o->ptr = ptr;
+	o->refcount = 1;
+
+	/* Set the LRU to the current lruclock (minutes resolution). */
+	//o->lru = server.lruclock;
 }
 
 robj *createStringObject(char *ptr, size_t len) {
@@ -405,6 +415,11 @@ int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
     size_t alen, blen, minlen;
     redisAssertWithInfo(NULL,a,a->type == REDIS_STRING && b->type == REDIS_STRING);
 
+	//TODO:PERF COMPARE AS INTS IF AVAILABLE
+	if (a->encoding == REDIS_ENCODING_INT && b->encoding == REDIS_ENCODING_INT) {
+		return ((int)a->ptr - (int)b->ptr);
+	}
+
     if (a == b) return 0;
     if (a->encoding != REDIS_ENCODING_RAW) {
         alen = ll2string(bufa,sizeof(bufa),(long) a->ptr);
@@ -619,6 +634,8 @@ char *strEncoding(int encoding) {
 /* Given an object returns the min number of seconds the object was never
  * requested, using an approximated LRU algorithm. */
 unsigned long estimateObjectIdleTime(robj *o) {
+	//TODO:PERF ARE WE ACCESSING THE GLOBAL LRUCLOCK?
+	redisAssert(0);
     if (server.lruclock >= o->lru) {
         return (server.lruclock - o->lru) * REDIS_LRU_CLOCK_RESOLUTION;
     } else {
