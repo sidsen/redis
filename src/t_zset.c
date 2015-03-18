@@ -1346,16 +1346,15 @@ void zaddGenericCommand(redisClient *c, int incr) {
 	}
 	for (j = 0; j < elements; j++) {
 		score = scores[j];
-		ele = c->argv[3 + j * 2] = tryObjectEncoding(c->argv[3 + j * 2]);
+		//TODO:PERF USELESS AS STRTOL FUNC USED FAILS ON LEADING ZEROS
+		ele = c->argv[3 + j * 2]; // = tryObjectEncoding(c->argv[3 + j * 2]);
 		int success;
 		if (incr) {
-			success = RDS_incrby(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),	
-				(u32)(score), strtol(ele->ptr, NULL, 10));
+			success = RDS_incrby(rds, c->currthread, (u32)(score), strtol(ele->ptr, NULL, 10));
 			//printf("ZINCRBY called!\n");
 		}
 		else {
-			success = RDS_insert(rds, dictFetchValue(thread_ids, GetCurrentThreadId()),
-				(u32)(score), strtol(ele->ptr, NULL, 10));
+			success = RDS_insert(rds, c->currthread, (u32)(score), strtol(ele->ptr, NULL, 10));
 		}
 		if (!success) {
 			addReplyError(c, nanerr);
@@ -1393,6 +1392,7 @@ int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 	initObject(&ele, REDIS_STRING, (void*)member);
 	ele.encoding = REDIS_ENCODING_INT;
 	de = dictFind(zs->dict, &ele);
+	//printf("Dictionary is %d big\n", dictSize(zs->dict));
 	if (de != NULL) {
 		curobj = dictGetKey(de);
 		curscore = *(double*)dictGetVal(de);
@@ -3011,8 +3011,9 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 		dictEntry *de;
 		double score;
 
-		ele = c->argv[2] = tryObjectEncoding(c->argv[2]);
-		rank = RDS_contains(rds, dictFetchValue(thread_ids, GetCurrentThreadId()), strtol(ele->ptr, NULL, 10), 0);
+		//TODO:PERF USELESS AS STRTOL FUNC USED FAILS ON LEADING ZEROS
+		ele = c->argv[2]; // = tryObjectEncoding(c->argv[2]);
+		rank = RDS_contains(rds, c->currthread, strtol(ele->ptr, NULL, 10), 0);
 		if (c->noReply) {
 			return;
 		}

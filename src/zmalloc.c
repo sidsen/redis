@@ -90,7 +90,7 @@ void zlibc_free(void *ptr) {
 #define update_zmalloc_stat_sub(__n) __atomic_sub_fetch(&used_memory, (__n), __ATOMIC_RELAXED)
 #elif defined(HAVE_ATOMIC)
 #ifdef _WIN32
-//TODO:PERF DISABLE FOR NOW, CAUSING MASSIVE PERF DROP
+//TODO:PERF DISABLE FOR NOW TO AVOID MASSIVE PERF DROP
 #define update_zmalloc_stat_add(__n) (0) //FetchAndAdd64(&used_memory, (__n))
 #define update_zmalloc_stat_sub(__n) (0) //FetchAndAdd64(&used_memory, -1*(__n))
 #else

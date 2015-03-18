@@ -521,7 +521,11 @@ static void createMissingClients(client c) {
 
     while(config.liveclients < config.numclients) {
 		if (c->dualclient) {
-			int startFirst = (random() % 101 <= c->dualpercent);
+			int startFirst = (random() % 100 < c->dualpercent);
+			//if (startFirst)
+			//	printf("Doing READ\n");
+			//else
+			//	printf("Doing WRITE\n");
 	        client c1 = createClient(NULL,0,c,startFirst);
 			client c2 = createClient(NULL, 0, c->dualclient,!startFirst);
 			c1->dualclient = c2;
@@ -600,7 +604,11 @@ static void dual_benchmark(char *title, char *cmd, int len, char* cmd2, int len2
 	config.requests_issued = 0;
 	config.requests_finished = 0;
 
-	int startFirst = (random() % 101 < config.dualpercent);
+	int startFirst = (random() % 100 < config.dualpercent);
+	//if (startFirst)
+	//	printf("Doing READ\n");
+	//else 
+	//	printf("Doing WRITE\n");
 	c = createClient(cmd, len, NULL, startFirst);
 	c2 = createClient(cmd2, len2, NULL, !startFirst);
 	c->dualclient = c2;

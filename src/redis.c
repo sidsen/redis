@@ -2186,7 +2186,7 @@ void callCommandAndResetClient(redisClient *c, int thread_id) {
 		while (threadCounter != 0)
 			_mm_pause();
 		u64 startTime = ustime();
-		for (int i = 0; i < 5000; i++) {
+		for (int i = 0; i < 500; i++) {
 			execBatch(c);
 		}
 		u64 endTime = ustime();

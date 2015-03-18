@@ -51,7 +51,7 @@ TMALLOC_EXPORT void _tfree(void *buf);
 TMALLOC_EXPORT void *_trealloc(void *ptr, size_t size);
 TMALLOC_EXPORT void *_tcalloc(size_t n_elements, size_t elem_size);
 TMALLOC_EXPORT size_t _tgetsize(void *buf);
-void _tmreportprocessor(int processor); // reports on which processor a thread is running. Used only if _TM_NUMAALLOC is defined
+TMALLOC_EXPORT void _tmreportprocessor(int processor); // reports on which processor a thread is running. Used only if _TM_NUMAALLOC is defined
 
 // original allocation functions
 void *orig_malloc(size_t size);

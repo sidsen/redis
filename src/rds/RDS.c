@@ -236,7 +236,8 @@ inline u32 UpdateFromLogForReads(RDS *rds, int thrid, u32 to) {
 }
 
 
-
+//TODO:PERF FOR TESTING RDS PERF
+#if 1
 u32 Combine_incrby(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 nextOp;
 	u32 counter, startInd, finalInd;
@@ -252,6 +253,7 @@ u32 Combine_incrby(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 	//printf("Thread %d is running on processor %d\n", thrid, GetCurrentProcessorNumber());
 	//fflush(stdout);
+	/*
 	do {
 		while (rds->local[rds->leader[thrid].val].replica->combinerLock.val != 0) {
 			_mm_pause();
@@ -264,7 +266,7 @@ u32 Combine_incrby(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			return resp;
 		}
 	} while (1);
-
+	*/
 
 	do {
 		while ((rds->local[rds->leader[thrid].val].replica->combinerLock.val != 0) && (((rds->local[rds->leader[thrid].val].replica->slot[myIndex].op != 0)))) {
@@ -299,7 +301,7 @@ u32 Combine_incrby(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 				}
 			}
 
-			/*
+			// /*
 			NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
 			
 
@@ -341,7 +343,7 @@ u32 Combine_incrby(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
 			if (rds->local[rds->leader[thrid].val].replica->localTail < startInd) rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
 			
-			*/
+			//*/
 
 			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {
 				
@@ -354,19 +356,20 @@ u32 Combine_incrby(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			}
 
 
+
+			//
+			if (howMany) UpdateMin(rds, thrid, startInd, howMany);
 			
 
-			//if (howMany) UpdateMin(rds, thrid, startInd, howMany);
-			
-
-			//NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
+			//
+			NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
 			rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
 
 			return *(rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp);
 		}
 	} while (1);
 }
-
+#endif
 
 inline bool BetweenLocalAndTail(RDS *rds, u32 readTail, u32 localTail, u32 tail) {	
 	if (localTail <= tail) {
