@@ -431,8 +431,9 @@ static RedisParamterMapper g_redisArgMap =
     { "latency-monitor-threshold",      &fp1 },    // latency-monitor-threshold [number]
     { cInclude,                         &fp1 },    // include [path]
 
-	// Threadpool commands
+	// Threadpool/additional work commands
 	{ cThreads,							&fp1 },    // threads [num-threads]
+	{ cWorkMult,						&fp1 },    // wm [multiplier]
 
     // sentinel commands
     { "sentinel",                       &sp }

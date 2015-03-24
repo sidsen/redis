@@ -1174,7 +1174,7 @@ void zsetConvert(robj *zobj, int encoding) {
  * Sorted set commands
  *----------------------------------------------------------------------------*/
 
-#if 0
+#if 1
 /* This generic command implements both ZADD and ZINCRBY. */
 void zaddGenericCommand(redisClient *c, int incr) {
     static char *nanerr = "resulting score is not a number (NaN)";
@@ -1300,10 +1300,13 @@ void zaddGenericCommand(redisClient *c, int incr) {
             redisPanic("Unknown sorted set encoding");
         }
     }
-    if (incr) /* ZINCRBY */
-        addReplyDouble(c,score);
-    else /* ZADD */
-        addReplyLongLong(c,added);
+
+	if (!c->noReply) {
+		if (incr) /* ZINCRBY */
+			addReplyDouble(c, score);
+		else /* ZADD */
+			addReplyLongLong(c, added);
+	}
 
 cleanup:
 	if (keyLocked) {
@@ -1318,7 +1321,7 @@ cleanup:
 }
 #endif
 
-#if 1
+#if 0
 /* This generic command implements both ZADD and ZINCRBY. */
 void zaddGenericCommand(redisClient *c, int incr) {
 	static char *nanerr = "resulting score is not a number (NaN)";
@@ -2899,7 +2902,7 @@ void zscoreCommand(redisClient *c) {
 }
 
 //TODO:RDS SAVE OLD COPY
-#if 0
+#if 1
 void zrankGenericCommand(redisClient *c, int reverse) {
     robj *key = c->argv[1];
     robj *ele = c->argv[2];
@@ -2949,12 +2952,16 @@ void zrankGenericCommand(redisClient *c, int reverse) {
             score = *(double*)dictGetVal(de);
             rank = zslGetRank(zsl,score,ele);
             redisAssertWithInfo(c,ele,rank); /* Existing elements always have a rank. */
-            if (reverse)
-                addReplyLongLong(c,llen-rank);
-            else
-                addReplyLongLong(c,rank-1);
+			if (!c->noReply) {
+				if (reverse)
+					addReplyLongLong(c, llen - rank);
+				else
+					addReplyLongLong(c, rank - 1);
+			}
         } else {
-            addReply(c,shared.nullbulk);
+			if (!c->noReply) {
+				addReply(c, shared.nullbulk);
+			}
         }
     } else {
         redisPanic("Unknown sorted set encoding");
@@ -2962,7 +2969,7 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 }
 #endif
 
-#if 1
+#if 0
 void zrankGenericCommand(redisClient *c, int reverse) {
 	robj *key = c->argv[1];
 	robj *ele = c->argv[2];

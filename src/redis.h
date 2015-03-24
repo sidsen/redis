@@ -411,6 +411,9 @@ typedef long long mstime_t; /* millisecond time type. */
 #define REDIS_THREADPOOL_MAX_SIZE 1024
 #define REDIS_THREADPOOL_DEFAULT_QUEUE_SIZE 1024
 
+/* This is used to create additional work to overcome the RPC bottleneck */
+#define REDIS_DEFAULT_WORK_MULTIPLIER 0
+
 /* Using the following macro you can run code inside serverCron() with the
  * specified period, specified in milliseconds.
  * The actual resolution depends on server.hz. */
@@ -906,6 +909,8 @@ struct redisServer {
 	threadpool_t *tpool;
 	int threadpool_size;
 	pthread_mutex_t *lock;
+
+	int work_multiplier;       /* Simulates additional work to overcome RPC bottleneck */
 	
 	/* Replicated data structures (RDS) state */
 	RDS* rds;

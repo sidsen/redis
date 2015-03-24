@@ -543,6 +543,9 @@ void loadServerConfigFromString(char *config) {
                 if (err) goto loaderr;
             }
 		}
+		else if (!strcasecmp(argv[0], "wm") && argc == 2) {
+			server.work_multiplier = strtoll(argv[1], NULL, 10);
+		}
 		else if (!strcasecmp(argv[0], "threads") && argc == 2) {
 			server.threadpool_size = strtoll(argv[1], NULL, 10);
 #ifdef _WIN32

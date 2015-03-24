@@ -60,6 +60,7 @@ const string cMaxMemory = "maxmemory";
 const string cSentinel = "sentinel";
 
 const string cThreads = "threads";
+const string cWorkMult = "wm";
 
 const string cYes = "yes";
 const string cNo = "no";

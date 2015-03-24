@@ -1395,6 +1395,7 @@ void processInputBuffer(redisClient *c) {
 			redisAssert(0);
 		pthread_mutex_unlock(c->ref_lock);
 		threadpool_add(server.tpool, (void(*)(void *)) callCommandAndResetClient, (void *)c, 0);
+		//callCommandAndResetClient(c);
 	} else {
 		c->busy = 0;
 	}

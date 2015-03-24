@@ -1462,6 +1462,7 @@ void initServerConfig(void) {
     server.next_client_id = 1; /* Client IDs, start from 1 .*/
     server.loading_process_events_interval_bytes = (1024*1024*2);
 	server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
+	server.work_multiplier = REDIS_DEFAULT_WORK_MULTIPLIER;
 
     updateLRUClock();
     resetServerSaveParams();
@@ -2171,32 +2172,41 @@ void callCommandAndResetClient(redisClient *c, int thread_id) {
 	pthread_mutex_lock(c->lock);
 	c->currthread = thread_id;
 
-	/* Disable sends for now, since we want to schedule the send after processing the batch */
-	c->disableSend = 1;
 	/* If we are in this function, then we will always have a batch request */
 	redisAssert(c->bstate.count > 0);
-	execBatch(c);
-	c->noReply = 1;
+
+	/* Disable sends for now, since we want to schedule the send after processing the batch */
+	c->disableSend = 1;
 
 	/* Experiment with duplicating work to relieve RPC bottleneck */
 	if (strcmp(c->bstate.commands[0].cmd->name, "zrank") == 0 || strcmp(c->bstate.commands[0].cmd->name, "zincrby") == 0) {
+		/*
 		u32 result = AtomicDec32(&threadCounter);
 		fprintf(stdout, "Threadcounter is %d\n", result);
 		fflush(stdout);
 		while (threadCounter != 0)
 			_mm_pause();
 		u64 startTime = ustime();
-		for (int i = 0; i < 50; i++) {
+		*/
+		c->noReply = 1;
+		for (int i = 0; i < server.work_multiplier; i++) {
 			execBatch(c);
 		}
+		c->noReply = 0;
+		// This is the actual call that responds to the client
+		execBatch(c);
+		/*
 		u64 endTime = ustime();
 		fprintf(stdout, "Total operations performed on proc %d (accessing replica %d) is %d, done in %f ms\n", GetCurrentProcessorNumber(), rds->leader[c->currthread].val,
 			5001 * c->bstate.count, (endTime - startTime) / 1000.0);
 		fflush(stdout);
 		ExitThread(1);
+		*/
+	}
+	else {
+		execBatch(c);
 	}
 
-	c->noReply = 0;
 	discardBatch(c);
 	c->disableSend = 0;
 
