@@ -1802,11 +1802,15 @@ void initServer(void) {
     /* Create the Redis databases, and initialize other internal state. */
     for (j = 0; j < server.dbnum; j++) {
         server.db[j].dict = dictCreate(&dbDictType,NULL);
+		//TODO:BUG PREALLOCTE SPACE TO AVOID REHASHING FAULT
+		dictExpand(server.db[j].dict, 100);
         server.db[j].expires = dictCreate(&keyptrDictType,NULL);
         server.db[j].blocking_keys = dictCreate(&keylistDictType,NULL);
         server.db[j].ready_keys = dictCreate(&setDictType,NULL);
         server.db[j].watched_keys = dictCreate(&keylistDictType,NULL);
 		server.db[j].locked_keys = dictCreate(&lockedKeysDictType, NULL);
+		//TODO:BUG PREALLOCTE SPACE TO AVOID REHASHING FAULT
+		dictExpand(server.db[j].locked_keys, 100);
 		server.db[j].lock = zmalloc(sizeof(pthread_mutex_t));
 		pthread_mutex_init(server.db[j].lock, NULL);
         server.db[j].id = j;
@@ -1874,8 +1878,10 @@ void initServer(void) {
         }
     }
 
-	//TODO:RDS
-	rds = RDS_new();
+	//TODO:RDS SHOULD ONLY SETUP RDS IF SPECIFIED, BUT COMMENT FOR NOW SINCE TOO MANY DEPENDENCIES
+	if (!server.no_repl) {
+		rds = RDS_new();
+	}
 
 	//if (server.threadpool_size == -1)
 	//if ((server.threadpool_size = (getNumCPUs() * 2)) < REDIS_THREADPOOL_DEFAULT_SIZE)
@@ -3414,20 +3420,29 @@ void lockKey(redisClient *c, robj *key) {
 
 int genericLockKey(redisClient *c, robj *key, int trylock) {
 	dictEntry *de;
+	pthread_mutex_t* lock = NULL;
 
 	//if (!server.locking_mode) return 0;
+
+	//TODO:PERF TRY FIRST TO AVOID DB LOCK (IS THIS THREAD-SAFE?)
+	de = dictFind(c->db->locked_keys, key->ptr);
+	if (de) {
+		lock = dictGetVal(de);
+		pthread_mutex_lock(lock);
+		return 0;
+	}
 
 	pthread_mutex_lock(c->db->lock);
 	de = dictFind(c->db->locked_keys, key->ptr);
 	if (!de) {
-		pthread_mutex_t* lock = zmalloc(sizeof(pthread_mutex_t));
+		lock = zmalloc(sizeof(pthread_mutex_t));
 		pthread_mutex_init(lock, NULL);
 		dictAdd(c->db->locked_keys, sdsdup(key->ptr), lock);
 		pthread_mutex_lock(lock);
 		pthread_mutex_unlock(c->db->lock);
 	}
 	else {
-		pthread_mutex_t *lock = dictGetVal(de);
+		lock = dictGetVal(de);
 
 		if (trylock) {
 			redisAssert(0);

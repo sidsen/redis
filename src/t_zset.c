@@ -1174,7 +1174,6 @@ void zsetConvert(robj *zobj, int encoding) {
  * Sorted set commands
  *----------------------------------------------------------------------------*/
 
-#if 1
 /* This generic command implements both ZADD and ZINCRBY. */
 void zaddGenericCommand(redisClient *c, int incr) {
     static char *nanerr = "resulting score is not a number (NaN)";
@@ -1199,6 +1198,17 @@ void zaddGenericCommand(redisClient *c, int incr) {
         if (getDoubleFromObjectOrReply(c,c->argv[2+j*2],&scores[j],NULL)
             != REDIS_OK) goto cleanup;
     }
+
+	//TODO:PERF SIMULATE THREAD-TO-KEY AFFINITY
+	/*
+	size_t r = c->currthread;
+	char *p = (char*)key->ptr + 21;
+	for (int j = 0; j < 10; j++) {
+		*p = '0' + r % 10;
+		r /= 10;
+		p--;
+	}
+	*/
 
 	lockKey(c, key);
 	keyLocked = 1;
@@ -1319,7 +1329,6 @@ cleanup:
             incr ? "zincr" : "zadd", key, c->db->id);
     }
 }
-#endif
 
 /* This generic command implements both ZADD and ZINCRBY. */
 void zaddGenericCommandRepl(redisClient *c, int incr) {
@@ -2909,8 +2918,6 @@ void zscoreCommand(redisClient *c) {
     }
 }
 
-//TODO:RDS SAVE OLD COPY
-#if 1
 void zrankGenericCommand(redisClient *c, int reverse) {
     robj *key = c->argv[1];
     robj *ele = c->argv[2];
@@ -2918,8 +2925,24 @@ void zrankGenericCommand(redisClient *c, int reverse) {
     unsigned long llen;
     unsigned long rank;
 
-    if ((zobj = lookupKeyReadOrReply(c,key,shared.nullbulk)) == NULL ||
-        checkType(c,zobj,REDIS_ZSET)) return;
+	//TODO:PERF SIMULATE THREAD-TO-KEY AFFINITY
+	/*
+	size_t r = c->currthread;
+	char *p = (char*)key->ptr + 21;
+	for (int j = 0; j < 10; j++) {
+		*p = '0' + r % 10;
+		r /= 10;
+		p--;
+	}
+	*/
+
+	lockKey(c, key);
+
+	if ((zobj = lookupKeyReadOrReply(c, key, shared.nullbulk)) == NULL ||
+		checkType(c, zobj, REDIS_ZSET)) {
+		unlockKey(c, key);
+		return;
+	}
     llen = zsetLength(zobj);
 
     redisAssertWithInfo(c,ele,ele->encoding == REDIS_ENCODING_RAW);
@@ -2974,8 +2997,9 @@ void zrankGenericCommand(redisClient *c, int reverse) {
     } else {
         redisPanic("Unknown sorted set encoding");
     }
+
+	unlockKey(c, key);
 }
-#endif
 
 void zrankGenericCommandRepl(redisClient *c, int reverse) {
 	robj *key = c->argv[1];

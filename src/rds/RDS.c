@@ -492,7 +492,9 @@ u32 CombineReads(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 id = thrid % NUM_THREADS_PER_NODE;
 
 	
-	if (NodeRWLock_Dist_TryRLock(&(rds->local[rds->leader[thrid].val].replica->lock), id)) { 
+	//if (NodeRWLock_Dist_TryRLock(&(rds->local[rds->leader[thrid].val].replica->lock), id)) { 
+	//TODO:PERF THIS SEEMS TO HELP A LOT FOR 99% READS
+	NodeRWLock_Dist_RLock(&(rds->local[rds->leader[thrid].val].replica->lock), id);
 		readTail = rds->sharedLog.logTail.val;		
 		if (!BetweenLocalAndTail(rds, readTail, rds->local[rds->leader[thrid].val].replica->localTail, rds->sharedLog.logTail.val)) {
 		
@@ -502,7 +504,7 @@ u32 CombineReads(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			return resp;
 		}
 		NodeRWLock_Dist_RUnlock(&(rds->local[rds->leader[thrid].val].replica->lock), id);
-	}
+	//}
 
 
 	//printf("\n-----------------> WRONG %d\n", 0);

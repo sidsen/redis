@@ -41,6 +41,7 @@
 #include "threadpool.h"
 #include "RDS.h"
 #include "tmalloc.h"
+#include "redis.h"
 
 /**
 *  @struct threadpool_task
@@ -281,8 +282,10 @@ static void *threadpool_thread(void *threadpool)
 	/* Pin the thread */
 	SetThreadAffinityMask(GetCurrentThread(), (DWORD_PTR)1 << (thread_id % MAX_THREADS));
 	_tmreportprocessor(thread_id);
-	RDS_StartThread(rds, thread_id);
-	
+	if (!server.no_repl) {
+		RDS_StartThread(rds, thread_id);
+	}
+
 	threadpool_task_t task;
 	int opCount = 0;
 	for (;;) {

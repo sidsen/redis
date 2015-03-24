@@ -57,6 +57,8 @@ int fmode = _O_BINARY;
 #define REDIS_NOTUSED(V) ((void) V)
 #define RANDPTR_INITIAL_SIZE 8
 
+#define NUM_ZIPF_KEYS 10000
+
 static struct config {
     aeEventLoop *el;
     const char *hostip;
@@ -72,6 +74,8 @@ static struct config {
     int randomkeys;
     int randomkeys_keyspacelen;
 	int znumkeys;
+	int zzipf;
+	int* zipfkeys;
     int keepalive;
     int pipeline;
     long long start;
@@ -212,7 +216,8 @@ int* generateZipfKeys(int N, int X, double alpha) {
 	double uniform, sum;
 	for (i = 0; i < X; i++) {
 		// Randomly select an item according to the Zipf ranked distribution.
-		uniform = rand() * 1.0 / RAND_MAX;
+		uniform = random() * 1.0 / INT_MAX;
+		assert(uniform >= 0.0 && uniform <= 1.0);
 		sum = 0.0;
 		for (j = 1; j <= N; j++) {
 			sum += pow(j, -alpha);
@@ -243,12 +248,24 @@ static void randomizeClientKey(client c) {
     }
 
 	/* Do the same for ZADDM/ZMIXEDM (uniform) */
+
+	/* Pre-allocate zipf random numbers since this is expensive */
+	if (config.zzipf && (config.zipfkeys == NULL)) {
+		config.zipfkeys = generateZipfKeys(config.znumkeys, NUM_ZIPF_KEYS, 1.0);
+	}
+	size_t r;
+	//r = random() % config.znumkeys;
 	for (i = 0; i < c->zrandlen; i++) {
 		char *p = c->zrandptr[i] + 9;
-		size_t r = random() % config.znumkeys;
+		if (config.zzipf) {
+			r = config.zipfkeys[random() % NUM_ZIPF_KEYS];
+		}
+		else {
+			r = random() % config.znumkeys;
+		}
 		size_t j;
 
-		for (j = 0; j < 12; j++) {
+		for (j = 0; j < 10; j++) {
 			*p = '0' + r % 10;
 			r /= 10;
 			p--;
@@ -526,8 +543,10 @@ static client createClient(char *cmd, size_t len, client from, int start) {
 
     c->written = 0;
     c->pending = config.pipeline+c->prefix_pending;
-    c->randptr = NULL;
+	c->randptr = NULL;
     c->randlen = 0;
+	c->zrandptr = NULL;
+	c->zrandlen = 0;
 
 	c->dualclient = NULL;
 	c->dualpercent = 100;
@@ -544,6 +563,17 @@ static client createClient(char *cmd, size_t len, client from, int start) {
                 /* Adjust for the different select prefix length. */
                 c->randptr[j] += c->prefixlen - from->prefixlen;
             }
+
+			/* Do the same for ZADDM/ZMIXEDM */
+			c->zrandlen = from->zrandlen;
+			c->zrandfree = 0;
+			c->zrandptr = zmalloc(sizeof(char*)*c->zrandlen);
+			/* copy the offsets. */
+			for (j = 0; j < (int)c->zrandlen; j++) {
+				c->zrandptr[j] = c->obuf + (from->zrandptr[j] - from->obuf);
+				/* Adjust for the different select prefix length. */
+				c->zrandptr[j] += c->prefixlen - from->prefixlen;
+			}
         } else {
             char *p = c->obuf;
 
@@ -572,7 +602,7 @@ static client createClient(char *cmd, size_t len, client from, int start) {
 				}
 				c->zrandptr[c->zrandlen++] = p;
 				c->zrandfree--;
-				p += 10; /* 12 is strlen("__z_rand__). */
+				p += 10; /* 10 is strlen("__z_rand__). */
 			}
         }
     }
@@ -737,10 +767,13 @@ int parseOptions(int argc, const char **argv) {
             config.randomkeys_keyspacelen = atoi(argv[++i]);
             if (config.randomkeys_keyspacelen < 0)
                 config.randomkeys_keyspacelen = 0;
-		}
-		else if (!strcmp(argv[i], "-z")) {
+		} else if (!strcmp(argv[i], "-zu")) {
 			if (lastarg) goto invalid;
 			config.znumkeys = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "-zz")) {
+			if (lastarg) goto invalid;
+			config.znumkeys = atoi(argv[++i]);
+			config.zzipf = 1;
 		} else if (!strcmp(argv[i], "-q")) {
             config.quiet = 1;
         } else if (!strcmp(argv[i],"--csv")) {
@@ -804,7 +837,8 @@ usage:
 "  from 0 to keyspacelen-1. The substitution changes every time a command\n"
 "  is executed. Default tests use this to hit random keys in the\n"
 "  specified range.\n"
-" -z <keys>          Number of keys for ZADDM/ZMIXEDM.\n"
+" -zu <keys>         Number of keys for ZADDM/ZMIXEDM, chosen uniformly.\n"
+" -zz <keys>         Number of keys for ZADDM/ZMIXEDM, chosen uniformly.\n"
 " -P <numreq>        Pipeline <numreq> requests. Default 1 (no pipeline).\n"
 " -q                 Quiet. Just show query/sec values\n"
 " --csv              Output in CSV format\n"
@@ -897,6 +931,8 @@ int main(int argc, const char **argv) {
     config.randomkeys = 0;
     config.randomkeys_keyspacelen = 0;
 	config.znumkeys = 1;
+	config.zzipf = 0;
+	config.zipfkeys = NULL;
     config.quiet = 0;
     config.csv = 0;
     config.loop = 0;
@@ -1013,14 +1049,9 @@ int main(int argc, const char **argv) {
 
 		if (test_is_selected("zaddm")) // || test_is_selected("zscore") || test_is_selected("zincrby") || test_is_selected("zrank"))
 		{
-			char cmdStr[50];
-			/* Create a distinct sorted set for each client */
-			for (int j = 0; j < config.znumkeys; j++) {
-				sprintf(cmdStr, "ZADD mysortedset_%d __rand_int__ __rand_int__", j);
-				len = redisFormatCommand(&cmd, cmdStr);
-				benchmark("ZADD (needed to benchmark ZSCORE,ZINCRBY)", cmd, len);
-				free(cmd);
-			}
+			len = redisFormatCommand(&cmd, "ZADD mysortedset___z_rand__ __rand_int__ __rand_int__");
+			benchmark("ZADD (needed to benchmark ZSCORE,ZINCRBY)", cmd, len);
+			free(cmd);
 		}
 
 		if (test_is_selected("zscore"))
