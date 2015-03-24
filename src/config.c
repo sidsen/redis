@@ -543,6 +543,9 @@ void loadServerConfigFromString(char *config) {
                 if (err) goto loaderr;
             }
 		}
+		else if (!strcasecmp(argv[0], "norepl")) {
+			server.no_repl = 1;
+		}
 		else if (!strcasecmp(argv[0], "wm") && argc == 2) {
 			server.work_multiplier = strtoll(argv[1], NULL, 10);
 		}

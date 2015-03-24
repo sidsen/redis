@@ -71,6 +71,7 @@ static struct config {
     int datasize;
     int randomkeys;
     int randomkeys_keyspacelen;
+	int znumkeys;
     int keepalive;
     int pipeline;
     long long start;
@@ -96,6 +97,11 @@ typedef struct _client {
     char **randptr;         /* Pointers to :rand: strings inside the command buf */
     size_t randlen;         /* Number of pointers in client->randptr */
     size_t randfree;        /* Number of unused pointers in client->randptr */
+
+	char **zrandptr;         /* Pointers to :zrand: strings inside the command buf */
+	size_t zrandlen;         /* Number of pointers in client->zrandptr */
+	size_t zrandfree;        /* Number of unused pointers in client->zrandptr */
+
     unsigned int written;   /* Bytes of 'obuf' already written */
     long long start;        /* Start time of a request */
     long long latency;      /* Request latency */
@@ -190,6 +196,37 @@ static void resetClient(client c) {
     c->pending = config.pipeline;
 }
 
+ 
+/* Randomly select an item in [0,N-1] according to a Zipf (ranked) distribution 
+   parameterized by alpha. Repeat this X times. */
+int* generateZipfKeys(int N, int X, double alpha) {
+	int *keys = zcalloc(sizeof(int)*X);
+	int i, j;
+
+	double norm = 0.0;
+	// Determine the sum of the sizes of all N ranked items; this is the normalization
+	// factor.
+	for (i = 1; i <= N; i++) {
+		norm += pow(i, -alpha);
+	}
+	double uniform, sum;
+	for (i = 0; i < X; i++) {
+		// Randomly select an item according to the Zipf ranked distribution.
+		uniform = rand() * 1.0 / RAND_MAX;
+		sum = 0.0;
+		for (j = 1; j <= N; j++) {
+			sum += pow(j, -alpha);
+			if (sum >= uniform * norm) {
+				break;
+			}
+		}
+		// j now contains the rank of the selected item; store this in the array of
+		// random numbers, adjust for 0-based index
+		keys[i] = j - 1;
+	}
+	return keys;
+}
+
 static void randomizeClientKey(client c) {
     size_t i;
 
@@ -204,6 +241,21 @@ static void randomizeClientKey(client c) {
             p--;
         }
     }
+
+	/* Do the same for ZADDM/ZMIXEDM (uniform) */
+	for (i = 0; i < c->zrandlen; i++) {
+		char *p = c->zrandptr[i] + 9;
+		size_t r = random() % config.znumkeys;
+		size_t j;
+
+		for (j = 0; j < 12; j++) {
+			*p = '0' + r % 10;
+			r /= 10;
+			p--;
+		}
+	}
+
+	//ZIPF??
 }
 
 static void clientDone(client c) {
@@ -507,6 +559,21 @@ static client createClient(char *cmd, size_t len, client from, int start) {
                 c->randfree--;
                 p += 12; /* 12 is strlen("__rand_int__). */
             }
+
+			/* Replace random keys for ZADDM/ZMIXEDM */
+			p = c->obuf;
+			c->zrandlen = 0;
+			c->zrandfree = RANDPTR_INITIAL_SIZE;
+			c->zrandptr = zmalloc(sizeof(char*)*c->zrandfree);
+			while ((p = strstr(p, "__z_rand__")) != NULL) {
+				if (c->zrandfree == 0) {
+					c->zrandptr = zrealloc(c->zrandptr, sizeof(char*)*c->zrandlen * 2);
+					c->zrandfree += c->zrandlen;
+				}
+				c->zrandptr[c->zrandlen++] = p;
+				c->zrandfree--;
+				p += 10; /* 12 is strlen("__z_rand__). */
+			}
         }
     }
     if (config.idlemode == 0 && start)
@@ -670,7 +737,11 @@ int parseOptions(int argc, const char **argv) {
             config.randomkeys_keyspacelen = atoi(argv[++i]);
             if (config.randomkeys_keyspacelen < 0)
                 config.randomkeys_keyspacelen = 0;
-        } else if (!strcmp(argv[i],"-q")) {
+		}
+		else if (!strcmp(argv[i], "-z")) {
+			if (lastarg) goto invalid;
+			config.znumkeys = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "-q")) {
             config.quiet = 1;
         } else if (!strcmp(argv[i],"--csv")) {
             config.csv = 1;
@@ -733,6 +804,7 @@ usage:
 "  from 0 to keyspacelen-1. The substitution changes every time a command\n"
 "  is executed. Default tests use this to hit random keys in the\n"
 "  specified range.\n"
+" -z <keys>          Number of keys for ZADDM/ZMIXEDM.\n"
 " -P <numreq>        Pipeline <numreq> requests. Default 1 (no pipeline).\n"
 " -q                 Quiet. Just show query/sec values\n"
 " --csv              Output in CSV format\n"
@@ -824,6 +896,7 @@ int main(int argc, const char **argv) {
     config.pipeline = 1;
     config.randomkeys = 0;
     config.randomkeys_keyspacelen = 0;
+	config.znumkeys = 1;
     config.quiet = 0;
     config.csv = 0;
     config.loop = 0;
@@ -938,6 +1011,18 @@ int main(int argc, const char **argv) {
 			free(cmd);
 		}
 
+		if (test_is_selected("zaddm")) // || test_is_selected("zscore") || test_is_selected("zincrby") || test_is_selected("zrank"))
+		{
+			char cmdStr[50];
+			/* Create a distinct sorted set for each client */
+			for (int j = 0; j < config.znumkeys; j++) {
+				sprintf(cmdStr, "ZADD mysortedset_%d __rand_int__ __rand_int__", j);
+				len = redisFormatCommand(&cmd, cmdStr);
+				benchmark("ZADD (needed to benchmark ZSCORE,ZINCRBY)", cmd, len);
+				free(cmd);
+			}
+		}
+
 		if (test_is_selected("zscore"))
 		{
 			len = redisFormatCommand(&cmd, "ZSCORE mysortedset __rand_int__");
@@ -965,6 +1050,17 @@ int main(int argc, const char **argv) {
 			int len2;
 			len = redisFormatCommand(&cmd, "ZRANK mysortedset __rand_int__");
 			len2 = redisFormatCommand(&cmd2, "ZINCRBY mysortedset 3 __rand_int__");
+			dual_benchmark("ZRANK/ZINCRBY", cmd, len, cmd2, len2);
+			free(cmd);
+			free(cmd2);
+		}
+
+		if (test_is_selected("zmixedm"))
+		{
+			char *cmd2;
+			int len2;
+			len = redisFormatCommand(&cmd, "ZRANK mysortedset___z_rand__ __rand_int__");
+			len2 = redisFormatCommand(&cmd2, "ZINCRBY mysortedset___z_rand__ 3 __rand_int__");
 			dual_benchmark("ZRANK/ZINCRBY", cmd, len, cmd2, len2);
 			free(cmd);
 			free(cmd2);

@@ -914,6 +914,7 @@ struct redisServer {
 	
 	/* Replicated data structures (RDS) state */
 	RDS* rds;
+	int no_repl;
 
 	//int locking_mode;        /* if this is 0, locking should be unnecessary */
 };

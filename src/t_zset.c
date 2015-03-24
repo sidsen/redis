@@ -1321,9 +1321,8 @@ cleanup:
 }
 #endif
 
-#if 0
 /* This generic command implements both ZADD and ZINCRBY. */
-void zaddGenericCommand(redisClient *c, int incr) {
+void zaddGenericCommandRepl(redisClient *c, int incr) {
 	static char *nanerr = "resulting score is not a number (NaN)";
 	robj *key = c->argv[1];
 	robj *ele;
@@ -1382,7 +1381,6 @@ cleanup:
 			incr ? "zincr" : "zadd", key, c->db->id);
 	}
 }
-#endif
 
 int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 	zset *zs = zobj->ptr;
@@ -1434,11 +1432,21 @@ int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 }
 
 void zaddCommand(redisClient *c) {
-    zaddGenericCommand(c,0);
+	if (server.no_repl) {
+		zaddGenericCommand(c, 0);
+	}
+	else {
+		zaddGenericCommandRepl(c, 0);
+	}
 }
 
 void zincrbyCommand(redisClient *c) {
-    zaddGenericCommand(c,1);
+	if (server.no_repl) {
+		zaddGenericCommand(c, 1);
+	}
+	else {
+		zaddGenericCommandRepl(c, 1);
+	}
 }
 
 void zremCommand(redisClient *c) {
@@ -2969,8 +2977,7 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 }
 #endif
 
-#if 0
-void zrankGenericCommand(redisClient *c, int reverse) {
+void zrankGenericCommandRepl(redisClient *c, int reverse) {
 	robj *key = c->argv[1];
 	robj *ele = c->argv[2];
 	robj *zobj;
@@ -3042,7 +3049,6 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 	}
 	*/
 }
-#endif
 
 int zrankGenericCommandLocal(robj* zobj, int member) {
 	zset *zs = zobj->ptr;
@@ -3069,9 +3075,13 @@ int zrankGenericCommandLocal(robj* zobj, int member) {
 	return rank;
 }
 
-
 void zrankCommand(redisClient *c) {
-    zrankGenericCommand(c, 0);
+	if (server.no_repl) {
+		zrankGenericCommand(c, 0);
+	}
+	else {
+		zrankGenericCommandRepl(c, 0);
+	}
 }
 
 void zrevrankCommand(redisClient *c) {

@@ -61,6 +61,7 @@ const string cSentinel = "sentinel";
 
 const string cThreads = "threads";
 const string cWorkMult = "wm";
+const string cNoRepl = "norepl";
 
 const string cYes = "yes";
 const string cNo = "no";

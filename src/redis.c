@@ -1463,6 +1463,8 @@ void initServerConfig(void) {
     server.loading_process_events_interval_bytes = (1024*1024*2);
 	server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
 	server.work_multiplier = REDIS_DEFAULT_WORK_MULTIPLIER;
+	server.rds = NULL;
+	server.no_repl = 0;
 
     updateLRUClock();
     resetServerSaveParams();
