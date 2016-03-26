@@ -368,6 +368,10 @@ void discardBatch(redisClient *c) {
 	initClientBatchState(c);
 }
 
+//SID:TEMPORARY CODE FOR TESTING
+__declspec(thread) struct multiCmd readCmd = { 0 };
+__declspec(thread) struct multiCmd writeCmd = { 0 };
+
 void execBatch(redisClient *c) {
 	int j;
 	robj **orig_argv;
@@ -383,7 +387,52 @@ void execBatch(redisClient *c) {
 		c->argv = c->bstate.commands[j].argv;
 		c->cmd = c->bstate.commands[j].cmd;
 
+		//SID: TEMPORARY CODE FOR TESTING
+		if (readCmd.cmd == 0 && c->cmd->proc == zrankCommand) {
+			readCmd.argc = c->argc;
+			readCmd.argv = c->argv;
+			readCmd.cmd = c->cmd;
+		}
+		if ((writeCmd.argc == 0) && (c->cmd->proc == zincrbyCommand)) {
+			writeCmd.argc = c->argc;
+			writeCmd.argv = c->argv;
+			writeCmd.cmd = c->cmd;
+		}
+		if (readCmd.cmd != 0 && writeCmd.cmd != 0)
+		{
+			int i;
+			float readRatio = 0.0;
+			int keyrange = 10000;
+			int totalOps = 100000;
+			fprintf(stdout, "Starting local operations in worker thread %d\n", c->currthread);
+			fflush(stdout);
+			u64 startTime = ustime();
+			for (i = 0; i < totalOps; i++)
+			{
+				if (false && rand() <= readRatio * UINT_MAX)
+				{
+					c->argc = readCmd.argc;
+					c->argv = readCmd.argv;
+					c->cmd = readCmd.cmd;
+				}
+				else
+				{
+					c->argc = writeCmd.argc;
+					c->argv = writeCmd.argv;
+					c->cmd = writeCmd.cmd;
+				}
+				call(c, REDIS_CALL_FULL);
+			}
+			u64 endTime = ustime();
+			fprintf(stdout, "Total operations performed is %d, done in %f ms\n", i, (endTime - startTime) / 1000.0);
+			fflush(stdout);
+			Sleep(100000);
+			return;
+		}
+
+		//if (c->cmd->proc == zaddCommand) {
 		call(c, REDIS_CALL_FULL);
+		//}
 
 		/* Commands may alter argc/argv, restore bstate. */
 		c->bstate.commands[j].argc = c->argc;

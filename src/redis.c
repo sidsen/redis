@@ -2063,6 +2063,7 @@ void call(redisClient *c, int flags) {
     long long dirty, start, duration;
     int client_old_flags = c->flags;
 
+	/* TODO:REALISM UNCOMMENT THIS WITHOUT AFFECTING PERFORMANCE */
 #if 0
 	pthread_mutex_lock(server.lock);
     /* Sent the command to clients in MONITOR mode, only if the commands are
@@ -2215,7 +2216,9 @@ void callCommandAndResetClient(redisClient *c, int thread_id) {
 		execBatch(c);
 	}
 
-	discardBatch(c);
+	if (c->bstate.commands[0].cmd->proc == zaddCommand) {
+		discardBatch(c);
+	}
 	c->disableSend = 0;
 
 	/* let the response be sent to the client */

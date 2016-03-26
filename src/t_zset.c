@@ -106,7 +106,7 @@ void zslFree(zskiplist *zsl) {
  * levels are less likely to be returned. */
 int zslRandomLevel(void) {
     int level = 1;
-    while ((random()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
+    while ((randLFSR()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
         level += 1;
     return (level<ZSKIPLIST_MAXLEVEL) ? level : ZSKIPLIST_MAXLEVEL;
 }
@@ -1361,7 +1361,7 @@ void zaddGenericCommandRepl(redisClient *c, int incr) {
 		ele = c->argv[3 + j * 2]; // = tryObjectEncoding(c->argv[3 + j * 2]);
 		int success;
 		if (incr) {
-			success = RDS_incrby(rds, c->currthread, (u32)(score), strtol(ele->ptr, NULL, 10));
+			success = RDS_incrby(rds, c->currthread, (u32)(score), ustime() % 1000);
 			//printf("ZINCRBY called!\n");
 		}
 		else {
@@ -1402,7 +1402,6 @@ int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 	initObject(&ele, REDIS_STRING, (void*)member);
 	ele.encoding = REDIS_ENCODING_INT;
 	de = dictFind(zs->dict, &ele);
-	//printf("Dictionary is %d big\n", dictSize(zs->dict));
 	if (de != NULL) {
 		curobj = dictGetKey(de);
 		curscore = *(double*)dictGetVal(de);
@@ -1412,6 +1411,7 @@ int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 			if (isnan(score)) {
 				return 0;
 			}
+			dictSetDoubleVal(de, score);
 		}
 
 		/* Remove and re-insert when score changed. We can safely
@@ -3048,10 +3048,10 @@ void zrankGenericCommandRepl(redisClient *c, int reverse) {
 		//zskiplist *zsl = zs->zsl;
 		dictEntry *de;
 		double score;
-
+		
 		//TODO:PERF USELESS AS STRTOL FUNC USED FAILS ON LEADING ZEROS
 		ele = c->argv[2]; // = tryObjectEncoding(c->argv[2]);
-		rank = RDS_contains(rds, c->currthread, strtol(ele->ptr, NULL, 10), 0);
+		rank = RDS_contains(rds, c->currthread, ustime() % 1000, 0);
 		if (c->noReply) {
 			return;
 		}
