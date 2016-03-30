@@ -500,14 +500,6 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp = &resp;
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].op = op;
 
-	if (startTime == 0)
-		startTime = ustime();
-
-	if (combinerFreeze && (ustime() - startTime) / 1000.0 > 10) {
-		//printf("UNFREEZING\n");
-		combinerFreeze = false;
-	}
-
 	do {
 		while ((rds->local[rds->leader[thrid].val].replica->combinerLock.val != 0) && (((rds->local[rds->leader[thrid].val].replica->slot[myIndex].op != 0)))) {
 			_mm_pause();
@@ -520,16 +512,12 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			return resp;
 		}
 
-		if (((combinerFreeze && combinerId == myIndex) || !combinerFreeze) && (CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1)) == 0) {
+		if (CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1) == 0) {
 			if (rds->local[rds->leader[thrid].val].replica->slot[myIndex].op == 0) {
 				redisAssert(resp != MAX_UINT32);
 				rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
 				return resp;
 			}
-
-			combinerFreeze = true;
-			combinerId = myIndex;
-			startTime = ustime();
 
 			// Combiner
 			int howMany = 0;
