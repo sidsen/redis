@@ -17,7 +17,14 @@
 #include <stddef.h>
 #endif
 
+#include <assert.h>
+#include <intrin.h>
+
 #ifdef _MSC_VER
+
+
+#define MEMBAR  _ReadWriteBarrier()
+
 
 // these definitions for fetch-and-add, atomic-increment, and atomic-decrement are compiler specific
 #define FetchAndAdd32(ptr32, val32) _InterlockedExchangeAdd((long*)ptr32,val32)
@@ -170,6 +177,7 @@ public:
 */
 
 
+#if 0
 struct NodeRWLock_DistS {
 	PaddedVolatileUInt rLock[NUM_THR_NODE];
 } CACHE_ALIGN;
@@ -248,6 +256,104 @@ inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk) {
 	int i;
 	for (i = 0; i < NUM_THR_NODE; ++i) lk->rLock[i].val = 0;
 }
+#endif
+
+
+
+inline void Backoff(u32 times) {
+	u32 t;
+	u32 max = times;
+	if (max < INIT_EXPB) max = INIT_EXPB;
+	for (t = 0; t < max; ++t) {
+		_mm_pause();
+	}
+}
+
+// New RW Lock
+
+struct NodeRWLock_DistS {
+	PaddedVolatileUInt wLock;
+	PaddedVolatileUInt rLock[NUM_THR_NODE];	
+} CACHE_ALIGN;
+
+typedef struct NodeRWLock_DistS  NodeRWLock_Dist;
+
+inline void NodeRWLock_Dist_Init(NodeRWLock_Dist *lk);
+inline bool NodeRWLock_Dist_TryRLock(NodeRWLock_Dist *lk, u32 id);
+inline void NodeRWLock_Dist_RLock(NodeRWLock_Dist *lk, u32 id);
+inline void NodeRWLock_Dist_RUnlock(NodeRWLock_Dist *lk, u32 id);
+inline bool NodeRWLock_Dist_TryWLock(NodeRWLock_Dist *lk, u32 id);
+inline void NodeRWLock_Dist_WLock(NodeRWLock_Dist *lk);
+inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk);
+
+inline void NodeRWLock_Dist_Init(NodeRWLock_Dist *lk) {
+	int i;
+
+	//printf("\n-----------------> RWLOCKINIT %p\n", lk);
+
+	lk->wLock.val = 0;
+	for (i = 0; i < NUM_THR_NODE; ++i) lk->rLock[i].val = 0;
+}
+
+inline bool NodeRWLock_Dist_TryRLock(NodeRWLock_Dist *lk, u32 id) {
+	if (lk->wLock.val == 0) {
+		lk->rLock[id].val = 1;
+		MEMBAR;
+		if (lk->wLock.val == 0) return true;
+		else {
+			lk->rLock[id].val = 0;
+			MEMBAR;
+			return false;
+		}
+	}
+	return false;
+}
+
+inline void NodeRWLock_Dist_RLock(NodeRWLock_Dist *lk, u32 id) {
+	do {
+		if (lk->wLock.val == 0) {
+			lk->rLock[id].val = 1;
+			MEMBAR;
+			if (lk->wLock.val == 0) return;
+			else {
+				lk->rLock[id].val = 0;
+				MEMBAR;
+			}
+		}
+		_mm_pause();
+	} while (1);
+}
+
+inline void NodeRWLock_Dist_RUnlock(NodeRWLock_Dist *lk, u32 id) {
+	lk->rLock[id].val = 0;
+	MEMBAR;
+}
+
+
+inline void NodeRWLock_Dist_WLock(NodeRWLock_Dist *lk) {
+	int i;
+	// we always have only one writer, so we don't need to synchronize on the writer lock	
+	assert(lk->wLock.val == 0);
+	lk->wLock.val = 1;
+	MEMBAR;
+	// wait for the readers
+	for (i = 0; i < NUM_THR_NODE; ++i)  {
+		while (lk->rLock[i].val > 0);
+	}
+}
+
+
+inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk) {
+	lk->wLock.val = 0;
+	// combiner lock is always released after this lock
+	//MEMBAR;
+}
+
+
+
+
+
+
 
 
 

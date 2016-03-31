@@ -50,11 +50,13 @@ enum {
 
 
 struct PaddedSlotS {
-	volatile u32 op;
+	//volatile u32* resp;
+	PaddedVolatileUInt resp;
 	u32 arg1;
 	u32 arg2;
-	volatile u32* resp;
-	char pad_[CACHE_LINE - sizeof(volatile u32)-2 * sizeof(u32)-sizeof(volatile u32*)];
+	volatile u32 op;	
+	//char pad_[CACHE_LINE - sizeof(volatile u32)-2 * sizeof(u32)-sizeof(volatile u32*)];
+	char pad_[CACHE_LINE - sizeof(volatile u32)-2 * sizeof(u32)];
 } CACHE_ALIGN;
 
 typedef struct PaddedSlotS PaddedSlot;

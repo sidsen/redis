@@ -64,10 +64,7 @@ inline u32 Execute_local(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 
 inline void DoOp(RDS *rds, u32 thrid, u32 op, u32 arg1, u32 arg2) {
-	switch (op & CYCLE_MASK) {
-	case CONTAINS:
-		// ignore read-only operations in the log							
-		break;
+	switch (op & CYCLE_MASK) {	
 	case INSERT:
 		RDS_insert_local(rds, thrid, arg1, arg2);
 		break;
@@ -77,7 +74,12 @@ inline void DoOp(RDS *rds, u32 thrid, u32 op, u32 arg1, u32 arg2) {
 	case INCRBY:
 		RDS_incrby_local(rds, thrid, arg1, arg2);
 		break;
+	case CONTAINS:
+		redisAssert(0);
+		// ignore read-only operations in the log							
+		break;
 	case EMPTY:
+		redisAssert(0);
 		break;
 	default:
 		redisAssert(0);
@@ -192,26 +194,7 @@ inline u32 UpdateFromLogForReads(RDS *rds, int thrid, u32 to) {
 			if (((rds->sharedLog.log[index].op >> CYCLE_BITS) ^ rds->local[rds->leader[thrid].val].replica->localBit) != 0) {
 				return index;
 			}
-			DoOp(rds, thrid, rds->sharedLog.log[index].op, rds->sharedLog.log[index].arg1, rds->sharedLog.log[index].arg2);
-			// TODO why is OP_MASK here but CYCLE_MASK in UpdateFromLog. Does it matter which one we're using?
-			/*
-			switch (sharedLog.log[index].op & OP_MASK) {
-			case RO:
-			// ignore read-only operations in the log
-			break;
-			case WO:
-			WriteOnly_local(thrid, sharedLog.log[index].arg1, sharedLog.log[index].arg2);
-			break;
-			case RW:
-			ReadWrite_local(thrid, sharedLog.log[index].arg1, sharedLog.log[index].arg2);
-			break;
-			case EMPTY:
-			break;
-			default:
-			assert(0);
-			break;
-			}
-			*/
+			DoOp(rds, thrid, rds->sharedLog.log[index].op, rds->sharedLog.log[index].arg1, rds->sharedLog.log[index].arg2);			
 		}
 	}
 	else {
@@ -237,7 +220,8 @@ inline u32 UpdateFromLogForReads(RDS *rds, int thrid, u32 to) {
 
 
 //TODO:PERF FOR TESTING RDS PERF
-#if 1
+// TODO(irina): took this out while updating the Combine method
+#if 0
 
 u32 Combine_incrby(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 nextOp;
@@ -491,35 +475,22 @@ inline bool BetweenLocalAndTail(RDS *rds, u32 readTail, u32 localTail, u32 tail)
 
 u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 nextOp;
-	u32 counter, startInd, finalInd;
-	volatile u32 resp = MAX_UINT32;
+	u32 counter, startInd, finalInd;	
 	u32 myIndex = thrid % NUM_THREADS_PER_NODE;
 
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val = MAX_UINT32;
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg1 = arg1;
-	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg2 = arg2;
-	rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp = &resp;
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg2 = arg2;	
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].op = op;
 
 	do {
-		while ((rds->local[rds->leader[thrid].val].replica->combinerLock.val != 0) && (((rds->local[rds->leader[thrid].val].replica->slot[myIndex].op != 0)))) {
-			_mm_pause();
-		}
-		if (((rds->local[rds->leader[thrid].val].replica->slot[myIndex].op == 0))) {
-			// Not combiner
-			while (resp == MAX_UINT32) {
-				_mm_pause();
-			}
-			return resp;
-		}
 
-		if (CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1) == 0) {
-			if (rds->local[rds->leader[thrid].val].replica->slot[myIndex].op == 0) {
-				redisAssert(resp != MAX_UINT32);
-				rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
-				return resp;
-			}
+		if ((rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0) 
+			&& (rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0)
+			&& (rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0)
+			&& (CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1) == 0)) {
+			// I am the Combiner
 
-			// Combiner
 			int howMany = 0;
 			u32 index;
 			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {
@@ -577,7 +548,7 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 					nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
 					rds->local[rds->leader[thrid].val].replica->slot[index].op = EMPTY;
-					*(rds->local[rds->leader[thrid].val].replica->slot[index].resp) = Execute_local(rds, thrid, nextOp, rds->local[rds->leader[thrid].val].replica->slot[index].arg1, rds->local[rds->leader[thrid].val].replica->slot[index].arg2);
+					rds->local[rds->leader[thrid].val].replica->slot[index].resp.val = Execute_local(rds, thrid, nextOp, rds->local[rds->leader[thrid].val].replica->slot[index].arg1, rds->local[rds->leader[thrid].val].replica->slot[index].arg2);
 				}
 			}
 
@@ -587,8 +558,22 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
 			rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
 
-			return *(rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp);
+			redisAssert(rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val != MAX_UINT32);
+			return rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val;
 		}
+		else {
+			// not combiner, wait for response or wait to become combiner
+
+			while ((rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val == MAX_UINT32) 
+				&&  (rds->local[rds->leader[thrid].val].replica->combinerLock.val != 0)) {
+				_mm_pause();
+			}
+
+			if (rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val != MAX_UINT32) {
+				return rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val;
+			}
+		}			
+			
 	} while (1);
 }
 
