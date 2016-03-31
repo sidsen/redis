@@ -104,7 +104,7 @@ void UpdateMin(RDS *rds, int thrid, u32 currentTail, u32 howMany) {
 	u32 logMin, p;
 	u32 auxTail;
 	logMin = rds->sharedLog.logMin.val;
-	p = (logMin + _logSize - MAX_COMBINE - 1) & (_logSize - 1);
+	p = (logMin + _logSize - NUM_THREADS_PER_NODE - 1) & (_logSize - 1);
 
 	while (Between(rds, p, currentTail, howMany)) {
 		//update logMin if possible
@@ -125,7 +125,7 @@ void UpdateMin(RDS *rds, int thrid, u32 currentTail, u32 howMany) {
 			rds->sharedLog.logMin.val = minBiggerTail;
 		}
 		logMin = rds->sharedLog.logMin.val;
-		p = (logMin + _logSize - MAX_COMBINE - 1) & (_logSize - 1);
+		p = (logMin + _logSize - NUM_THREADS_PER_NODE - 1) & (_logSize - 1);
 	}
 }
 

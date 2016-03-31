@@ -23,6 +23,201 @@
 #ifdef _MSC_VER
 
 
+
+
+
+/*******************************************************
+CONFIGURATION
+********************************************************/
+
+/* if this is enabled all memory is allocated from node 0
+otherwise memory is allocated from the node local to each processor */
+#if 0
+#define TEST_MEM_LOCALITY
+#endif
+
+/* pick machine */
+//#define MACHINE_RAMA
+#define MACHINE_VRG
+
+
+/**********************************************
+Change between:
+- combine within a node
+- combine 2 (or more?) nodes
+- combine fewer than all threads in a node
+************************************************/
+
+#define NR_COMBINE_NODE
+//#define NR_COMBINE_DOUBLE_NODE
+//#define NR_COMBINE_SPLIT_NODE
+
+
+/*******************************************************
+END OF CONFIGURATION
+********************************************************/
+
+
+
+/*******************************************************
+MACHINE-SPECIFIC DEFINES
+********************************************************/
+
+
+#define CACHE_LINE    128
+//#define CACHE_ALIGN   __declspec(align(CACHE_LINE))
+#define CACHE_ALIGN   __declspec(align(CACHE_LINE))
+
+
+/* RAMA - MSR machine */
+#ifdef MACHINE_RAMA
+
+#ifdef NR_COMBINE_NODE
+#define NUM_THREADS_PER_NODE      6
+#elif defined NR_COMBINE_DOUBLE_NODE
+#define NUM_THREADS_PER_NODE      12
+#elif defined NR_COMBINE_SPLIT_NODE
+#define NUM_THREADS_PER_NODE      3
+#else
+#error "NUM_THREADS_PER_NODE not defined"
+#endif
+
+//#define NUM_NODES                 8
+//#define NUM_SOCKETS               4
+//#define NUM_NODES_PER_SOCKET      2
+//#define NUM_THREADS_PER_SOCKET    12   // NUM_NODES_PER_SOCKET * NUM_THREADS_PER_NODE
+
+
+// within a node first; (core, hyperthread) pairs
+static int coresInNodeAll[] = {
+	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+	14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+	28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+	42, 43, 44, 45, 46, 47, 48
+};
+
+
+
+/* VRG-11 */
+#elif defined MACHINE_VRG
+
+#ifdef NR_COMBINE_NODE
+#define NUM_THREADS_PER_NODE      28
+#elif defined NR_COMBINE_DOUBLE_NODE
+#define NUM_THREADS_PER_NODE      56
+#elif defined NR_COMBINE_SPLIT_NODE
+#define NUM_THREADS_PER_NODE      14
+#else
+#error "NUM_THREADS_PER_NODE not defined"
+#endif
+
+//#define NUM_NODES                 4
+//#define NUM_SOCKETS               4
+//#define NUM_NODES_PER_SOCKET      1
+//#define NUM_THREADS_PER_SOCKET    28   // NUM_NODES_PER_SOCKET * NUM_THREADS_PER_NODE
+
+
+
+
+#define INIT_EXPB    128
+
+// for RWlock
+#define NUM_THR_NODE    NUM_THREADS_PER_NODE
+
+
+#define MAX_THREADS    128	
+//#if MAX_THREADS < (NUM_NODES * NUM_THREADS_PER_NODE)
+//	#error "MAX_THREADS is invalid (must be bigger than NUM_NODES * NUM_THREADS_PER_NODE)"
+//#endif
+
+// within a node first; (core, hyperthread) pairs
+static int coresInNodeAll[] = {
+	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+	14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+	28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+	42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
+	56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69,
+	70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83,
+	84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97,
+	98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111
+};
+
+// within a node first; all cores first; then all hyperthreads in the same node
+static int coresInNodeHtt[] = {
+	0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26,
+	1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27,
+	28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54,
+	29, 31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51, 53, 55,
+	56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82,
+	57, 59, 61, 63, 65, 67, 69, 71, 73, 75, 77, 79, 81, 83,
+	84, 86, 88, 90, 92, 94, 96, 98, 100, 102, 104, 106, 108, 110,
+	85, 87, 89, 91, 93, 95, 97, 99, 101, 103, 105, 107, 109, 111
+};
+
+// within a node first, only the cores; then cores from other nodes; then all the hyperthreads
+static int coresInNodeNoHtt[] = {
+	0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26,
+	28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54,
+	56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82,
+	84, 86, 88, 90, 92, 94, 96, 98, 100, 102, 104, 106, 108, 110,
+	1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27,
+	29, 31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51, 53, 55,
+	57, 59, 61, 63, 65, 67, 69, 71, 73, 75, 77, 79, 81, 83,
+	85, 87, 89, 91, 93, 95, 97, 99, 101, 103, 105, 107, 109, 111
+};
+
+// across nodes, use hyperthreads too
+static int coresOutNodeHtt[] = {
+	0, 28, 56, 84, 1, 29, 57, 85,
+	2, 30, 58, 86, 3, 31, 59, 87,
+	4, 32, 60, 88, 5, 33, 61, 89,
+	6, 34, 62, 90, 7, 35, 63, 91,
+	8, 36, 64, 92, 9, 37, 65, 93,
+	10, 38, 66, 94, 11, 39, 67, 95,
+	12, 40, 68, 96, 13, 41, 69, 97,
+	14, 42, 70, 98, 15, 43, 71, 99,
+	16, 44, 72, 100, 17, 45, 73, 101,
+	18, 46, 74, 102, 19, 47, 75, 103,
+	20, 48, 76, 104, 21, 49, 77, 105,
+	22, 50, 78, 106, 23, 51, 79, 107,
+	24, 52, 80, 108, 25, 53, 81, 109,
+	26, 54, 82, 110, 27, 55, 83, 111
+};
+
+// across nodes, don't use hyperthreads until we run out of cores
+static int coresOutNodeNoHtt[] = {
+	0, 28, 56, 84, 2, 30, 58, 86,
+	4, 32, 60, 88, 6, 34, 62, 90,
+	8, 36, 64, 92, 10, 38, 66, 94,
+	12, 40, 68, 96, 14, 42, 70, 98,
+	16, 44, 72, 100, 18, 46, 74, 102,
+	20, 48, 76, 104, 22, 50, 78, 106,
+	24, 52, 80, 108, 26, 54, 82, 110,
+	1, 29, 57, 85, 3, 31, 59, 87,
+	5, 33, 61, 89, 7, 35, 63, 91,
+	9, 37, 65, 93, 11, 39, 67, 95,
+	13, 41, 69, 97, 15, 43, 71, 99,
+	17, 45, 73, 101, 19, 47, 75, 103,
+	21, 49, 77, 105, 23, 51, 79, 107,
+	25, 53, 81, 109, 27, 55, 83, 111,
+};
+
+#else 
+#error "Unrecognized machine, set a machine in utility.h"
+#endif 
+
+
+/*******************************************************
+ENDOF MACHINE-SPECIFIC DEFINES
+********************************************************/
+
+
+
+
+
+
+
+
 #define MEMBAR  _ReadWriteBarrier()
 
 
@@ -96,6 +291,7 @@ typedef  int8_t       i8;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#if 0
 #define CACHE_LINE    128
 
 #ifdef _MSC_VER
@@ -133,6 +329,7 @@ typedef  int8_t       i8;
 #define NUM_THR_NODE              NUM_THREADS_PER_NODE
 
 #define INIT_EXPB    128
+#endif
 
 _inline void Backoff(u32 times);
 

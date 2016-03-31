@@ -71,7 +71,7 @@ inline u32 SharedLog_GetNextTail(SharedLog *sl, u32 howMany) {
 	u32 min, p;
 	do {
 		min = sl->logMin.val;
-		p = (min + _logSize - MAX_COMBINE - 1) & (_logSize - 1);
+		p = (min + _logSize - NUM_THREADS_PER_NODE - 1) & (_logSize - 1);
 		tail = sl->logTail.val;
 		nextTail = ADDN(tail, howMany);
 		if ((p < min) && (tail > p) && (tail < min)) return _logSize;
