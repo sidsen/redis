@@ -280,7 +280,7 @@ static void *threadpool_thread(void *threadpool)
 	u32 thread_id = AtomicInc32(&threadCounter) - 1;
 
 	/* Pin the thread */
-	SetThreadAffinityMask(GetCurrentThread(), (DWORD_PTR)1 << (thread_id % MAX_THREADS));
+	pinThread(thread_id);
 	_tmreportprocessor(thread_id);
 	if (!server.no_repl) {
 		RDS_StartThread(rds, thread_id);

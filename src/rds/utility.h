@@ -23,9 +23,6 @@
 #ifdef _MSC_VER
 
 
-
-
-
 /*******************************************************
 CONFIGURATION
 ********************************************************/
@@ -37,8 +34,8 @@ otherwise memory is allocated from the node local to each processor */
 #endif
 
 /* pick machine */
-//#define MACHINE_RAMA
-#define MACHINE_VRG
+#define MACHINE_RAMA
+//#define MACHINE_VRG
 
 
 /**********************************************
@@ -96,7 +93,15 @@ static int coresInNodeAll[] = {
 	42, 43, 44, 45, 46, 47, 48
 };
 
+#define INIT_EXPB    128
 
+// for RWlock
+#define NUM_THR_NODE    NUM_THREADS_PER_NODE
+
+#define MAX_THREADS    48
+//#if MAX_THREADS < (NUM_NODES * NUM_THREADS_PER_NODE)
+//	#error "MAX_THREADS is invalid (must be bigger than NUM_NODES * NUM_THREADS_PER_NODE)"
+//#endif
 
 /* VRG-11 */
 #elif defined MACHINE_VRG
@@ -213,11 +218,6 @@ ENDOF MACHINE-SPECIFIC DEFINES
 
 
 
-
-
-
-
-
 #define MEMBAR  _ReadWriteBarrier()
 
 
@@ -258,6 +258,9 @@ typedef signed __int64 i64;
 typedef signed __int32 i32;
 typedef signed __int16 i16;
 typedef signed __int8  i8;
+
+// Thread pinning in Windows
+void pinThread(u32 proc);
 
 #else 
 
@@ -454,7 +457,6 @@ inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk) {
 	for (i = 0; i < NUM_THR_NODE; ++i) lk->rLock[i].val = 0;
 }
 #endif
-
 
 
 inline void Backoff(u32 times) {
@@ -669,6 +671,8 @@ public:
 ///
 
 u16 randLFSR();
+
+
 
 /*
 class SimplePrng { // Simple generator used to seed the better generator
