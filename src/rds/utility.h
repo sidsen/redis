@@ -23,6 +23,9 @@
 #ifdef _MSC_VER
 
 
+#define METHOD_REPLICATION
+//#define METHOD_FLAT_COMBINING
+
 /*******************************************************
 CONFIGURATION
 ********************************************************/
@@ -348,6 +351,38 @@ struct PaddedVolatileUIntS {
 
 typedef struct PaddedUIntS   PaddedUInt;
 typedef struct PaddedVolatileUIntS PaddedVolatileUInt;
+
+
+
+
+#define CYCLE_BITS   31
+#define CYCLE_MASK   2147483647   // (1 << CYCLE_BITS) - 1
+#define OP_BITS      2            // op only uses the last 2 bits    
+#define OP_MASK      3            // keep op bits discard everything else
+#define NODE_MASK    28           // node mask discards the op bits and uses the next 3 bits for the node
+#define MAX_UINT32   4294967295   // (1 << 32) - 1
+
+
+
+enum {
+	EMPTY,
+	CONTAINS,
+	INSERT,
+	REMOVE,
+	INCRBY
+};
+
+
+struct PaddedSlotS {
+	PaddedVolatileUInt resp;
+	u32 arg1;
+	u32 arg2;
+	volatile u32 op;
+	char pad_[CACHE_LINE - sizeof(volatile u32)-2 * sizeof(u32)];
+} CACHE_ALIGN;
+
+typedef struct PaddedSlotS PaddedSlot;
+
 
 
 /*

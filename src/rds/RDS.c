@@ -3,6 +3,8 @@
 //TODO:RDS
 #include "..\redis.h"
 
+#if defined (METHOD_REPLICATION)
+
 //TODO:RDS TEMPORARILY CREATE GLOBAL 
 RDS* rds;
 u32 threadCounter = 0;
@@ -708,3 +710,4 @@ void RDS_Finish(RDS *rds) {
 
 
 
+#endif
