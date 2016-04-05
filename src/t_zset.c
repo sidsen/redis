@@ -1201,7 +1201,7 @@ void zaddGenericCommand(redisClient *c, int incr) {
 
 	//TODO:PERF SIMULATE THREAD-TO-KEY AFFINITY
 	/*
-	size_t r = c->currthread;
+	size_t r = c->currthread;zad
 	char *p = (char*)key->ptr + 21;
 	for (int j = 0; j < 10; j++) {
 		*p = '0' + r % 10;

@@ -372,6 +372,8 @@ void discardBatch(redisClient *c) {
 __declspec(thread) struct multiCmd readCmd = { 0 };
 __declspec(thread) struct multiCmd writeCmd = { 0 };
 
+volatile u32 ready = 0;
+
 void execBatch(redisClient *c) {
 	int j;
 	robj **orig_argv;
@@ -400,32 +402,43 @@ void execBatch(redisClient *c) {
 		}
 		if (readCmd.cmd != 0 && writeCmd.cmd != 0)
 		{
-			int i;
-			float readRatio = 0.0;
-			int keyrange = 10000;
-			int totalOps = 100000;
-			fprintf(stdout, "Starting local operations in worker thread %d\n", c->currthread);
-			fflush(stdout);
-			u64 startTime = ustime();
-			for (i = 0; i < totalOps; i++)
-			{
-				if (false && rand() <= readRatio * UINT_MAX)
-				{
-					c->argc = readCmd.argc;
-					c->argv = readCmd.argv;
-					c->cmd = readCmd.cmd;
-				}
-				else
-				{
-					c->argc = writeCmd.argc;
-					c->argv = writeCmd.argv;
-					c->cmd = writeCmd.cmd;
-				}
-				call(c, REDIS_CALL_FULL);
+			AtomicInc32(&ready);
+			while (ready != threadCounter) {
+				;
 			}
-			u64 endTime = ustime();
-			fprintf(stdout, "Total operations performed is %d, done in %f ms\n", i, (endTime - startTime) / 1000.0);
-			fflush(stdout);
+			if (c->currthread == 0)
+			{
+				usleep(5000000);
+				ready = 0;
+			}
+			else {
+				int i;
+				float readRatio = 0.0;
+				int keyrange = 10000;
+				int totalOps = 100000;
+				fprintf(stdout, "Starting local operations in worker thread %d\n", c->currthread);
+				fflush(stdout);
+				u64 startTime = ustime();
+				for (i = 0; ready != 0; i++)
+				{
+					if (false && rand() <= readRatio * UINT_MAX)
+					{
+						c->argc = readCmd.argc;
+						c->argv = readCmd.argv;
+						c->cmd = readCmd.cmd;
+					}
+					else
+					{
+						c->argc = writeCmd.argc;
+						c->argv = writeCmd.argv;
+						c->cmd = writeCmd.cmd;
+					}
+					call(c, REDIS_CALL_FULL);
+				}
+				u64 endTime = ustime();
+				fprintf(stdout, "Total operations performed is %d, done in %f ms\n", i, (endTime - startTime) / 1000.0);
+				fflush(stdout);
+			}
 			Sleep(100000);
 			return;
 		}

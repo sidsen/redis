@@ -3819,7 +3819,7 @@ int main(int argc, char **argv) {
 
 	/* Pin the event loop thread to the highest processor to avoid conflicts with
 	   the threadpool */
-	pinThread(GetCurrentThread(), (DWORD_PTR)1 << (MAX_THREADS - 1));
+	pinThread(MAX_THREADS - 1);
 
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeMain(server.el);
