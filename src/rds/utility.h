@@ -1,9 +1,9 @@
-#ifndef _UTILITY_H
-#define _UTILITY_H
-
+//
 // utility.h : Common utility classes and definitions.
 //
 
+#ifndef _UTILITY_H
+#define _UTILITY_H
 
 //#ifdef _MSC_VER
 //#pragma once
@@ -297,46 +297,6 @@ typedef  int8_t       i8;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#if 0
-#define CACHE_LINE    128
-
-#ifdef _MSC_VER
-
-//#define CACHE_ALIGN   __declspec(align(CACHE_LINE))
-#define CACHE_ALIGN   __declspec(align(64))
-
-#else
-
-#define CACHE_ALIGN   __attribute__((aligned(64)))
-
-#endif
-
-/* From 48-proc machine */
-#define MAX_THREADS  48
-
-#define NUM_NODES                 8
-#define NUM_SOCKETS               4
-#define NUM_THREADS_PER_NODE      6
-#define NUM_NODES_PER_SOCKET      2
-#define NUM_THREADS_PER_SOCKET    12   // NUM_NODES_PER_SOCKET * NUM_THREADS_PER_NODE
-#define MAX_COMBINE               NUM_THREADS_PER_NODE
-
-/* For 80-proc machine
-#define MAX_THREADS  80
-
-#define NUM_NODES                 4
-#define NUM_SOCKETS               4
-#define NUM_THREADS_PER_NODE      20
-#define NUM_NODES_PER_SOCKET      1
-#define NUM_THREADS_PER_SOCKET    20   // NUM_NODES_PER_SOCKET * NUM_THREADS_PER_NODE
-#define MAX_COMBINE				  NUM_THREADS_PER_NODE
-*/
-
-#define NUM_THR_NODE              NUM_THREADS_PER_NODE
-
-#define INIT_EXPB    128
-#endif
-
 _inline void Backoff(u32 times);
 
 struct PaddedUIntS {
@@ -353,15 +313,12 @@ typedef struct PaddedUIntS   PaddedUInt;
 typedef struct PaddedVolatileUIntS PaddedVolatileUInt;
 
 
-
-
 #define CYCLE_BITS   31
 #define CYCLE_MASK   2147483647   // (1 << CYCLE_BITS) - 1
 #define OP_BITS      2            // op only uses the last 2 bits    
 #define OP_MASK      3            // keep op bits discard everything else
 #define NODE_MASK    28           // node mask discards the op bits and uses the next 3 bits for the node
 #define MAX_UINT32   4294967295   // (1 << 32) - 1
-
 
 
 enum {
@@ -383,116 +340,31 @@ struct PaddedSlotS {
 
 typedef struct PaddedSlotS PaddedSlot;
 
-
-
-/*
-class Spinlock {
-private:
+// Spinlock 
+struct SpinLockS {
 	PaddedVolatileUInt spinvar;
-public:
-	Spinlock() {
-		spinvar.val = 0;
-	}
-
-	void lock() {
-		u32 expb = 1;
-		do {
-			while (spinvar.val != 0) {
-				//Backoff(expb);
-				Backoff(1);
-				expb *= 2;
-			}
-		} while (CompareSwap32(&(spinvar.val), 0, 1) != 0);
-	}
-
-	void unlock() {
-		spinvar.val = 0;
-	}
-} CACHE_ALIGN;
-*/
-
-
-#if 0
-struct NodeRWLock_DistS {
-	PaddedVolatileUInt rLock[NUM_THR_NODE];
 } CACHE_ALIGN;
 
-typedef struct NodeRWLock_DistS  NodeRWLock_Dist;
+typedef struct SpinLockS SpinLock;
 
-inline void NodeRWLock_Dist_Init(NodeRWLock_Dist *lk);
-inline bool NodeRWLock_Dist_TryRLock(NodeRWLock_Dist *lk, u32 id);
-inline void NodeRWLock_Dist_RLock(NodeRWLock_Dist *lk, u32 id);
-inline void NodeRWLock_Dist_RUnlock(NodeRWLock_Dist *lk, u32 id);
-inline bool NodeRWLock_Dist_TryWLock(NodeRWLock_Dist *lk, u32 id);
-inline void NodeRWLock_Dist_WLock(NodeRWLock_Dist *lk);
-inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk);
-
-
-inline void Backoff(u32 times) {
-	u32 t;
-	u32 max = times;
-	if (max < INIT_EXPB) max = INIT_EXPB;
-	for (t = 0; t < max; ++t) {
-		_mm_pause();
-	}
+inline void SpinLock_Init(SpinLock* lk) {
+	lk->spinvar.val = 0;
 }
 
-inline void NodeRWLock_Dist_Init(NodeRWLock_Dist *lk) {
-	int i;
-
-	//printf("\n-----------------> RWLOCKINIT %p\n", lk);
-
-	for (i = 0; i < NUM_THR_NODE; ++i) lk->rLock[i].val = 0;
-}
-
-
-inline bool NodeRWLock_Dist_TryRLock(NodeRWLock_Dist *lk, u32 id) {
-	if (lk->rLock[id].val != 0) return false;
-	if (CompareSwap32(&(lk->rLock[id].val), 0, 1) == 0) {
-		return true;
-	}
-	return false;
-}
-
-inline void NodeRWLock_Dist_RLock(NodeRWLock_Dist *lk, u32 id) {
-	u32 v;
+inline void SpinLock_Lock(SpinLock* lk) {
+	u32 expb = 1;
 	do {
-		while (lk->rLock[id].val != 0) Backoff(1024);
-		if ((v = CompareSwap32(&(lk->rLock[id].val), 0, 1)) == 0) {
-			return;
+		while (lk->spinvar.val != 0) {
+			//Backoff(expb);
+			Backoff(1);
+			expb *= 2;
 		}
-	} while (1);
+	} while (CompareSwap32(&(lk->spinvar.val), 0, 1) != 0);
 }
 
-inline void NodeRWLock_Dist_RUnlock(NodeRWLock_Dist *lk, u32 id) {
-	lk->rLock[id].val = 0;
+inline void SpinLock_Unlock(SpinLock* lk) {
+	lk->spinvar.val = 0;
 }
-
-inline bool NodeRWLock_Dist_TryWLock(NodeRWLock_Dist *lk, u32 id) {
-	int i;
-	if (lk->rLock[id].val != 0) return false;
-	if (!NodeRWLock_Dist_TryRLock(lk, 0)) return false;
-	for (i = 1; i < NUM_THR_NODE; ++i) {
-		NodeRWLock_Dist_RLock(lk, i);
-	}
-	return true;
-}
-
-inline void NodeRWLock_Dist_WLock(NodeRWLock_Dist *lk) {
-	int i;
-
-	for (i = 0; i < NUM_THR_NODE; ++i) {
-		NodeRWLock_Dist_RLock(lk, i);
-	}
-}
-
-
-inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk) {
-	int i;
-	for (i = 0; i < NUM_THR_NODE; ++i) lk->rLock[i].val = 0;
-}
-#endif
-
 
 inline void Backoff(u32 times) {
 	u32 t;
@@ -504,7 +376,6 @@ inline void Backoff(u32 times) {
 }
 
 // New RW Lock
-
 struct NodeRWLock_DistS {
 	PaddedVolatileUInt wLock;
 	PaddedVolatileUInt rLock[NUM_THR_NODE];	
@@ -582,123 +453,6 @@ inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk) {
 	// combiner lock is always released after this lock
 	//MEMBAR;
 }
-
-
-
-
-
-
-
-
-
-////////////////////////////////////////
-
-	/*
-class NodeRWLock_Dist {
-private:
-	PaddedVolatileUInt rLock[NUM_THR_NODE];	
-public:
-
-	NodeRWLock_Dist() {
-		for (int i = 0; i < NUM_THR_NODE; ++i) rLock[i].val = 0;
-	}
-
-
-	inline bool TryRLock(u32 id) {
-		if (rLock[id].val != 0) return false;
-		if (CompareSwap32(&(rLock[id].val), 0, 1) == 0) {
-			return true;
-		}
-		return false;
-	}
-
-	inline void RLock(u32 id) {		
-		do {
-			while (rLock[id].val != 0) Backoff(1024);			
-			if (CompareSwap32(&(rLock[id].val), 0, 1) == 0) {
-				return;
-			}
-		} while (1);
-	}
-
-	inline void RUnlock(u32 id) {
-		rLock[id].val = 0;
-	}
-
-	inline bool TryWLock(u32 id) {
-		if (rLock[id].val != 0) return false;
-		if (!TryRLock(0)) return false;
-		for (int i = 1; i < NUM_THR_NODE; ++i) {
-			RLock(i);
-		}
-		return true;
-	}
-
-	inline void WLock() {
-		for (int i = 0; i < NUM_THR_NODE; ++i) {
-			RLock(i);
-		}
-	}
-
-
-	inline void WUnlock() {
-		for (int i = 0; i < NUM_THR_NODE; ++i) rLock[i].val = 0;
-	}
-
-} CACHE_ALIGN;
-*/
-
-/*
-class NodeRWLock {
-private:
-	PaddedVolatileUInt rCounter;
-	PaddedVolatileUInt wLock;
-public:
-
-	NodeRWLock() {
-		rCounter.val = 0;
-		wLock.val = 0;
-	}
-
-	void RLock(u32 id) {
-		u32  readers;		
-		do {
-			while (wLock.val != 0) _mm_pause();
-			readers = rCounter.val;
-			if (CompareSwap32(&(rCounter.val), readers, readers + 1) == readers) {
-				if (wLock.val != 0) RUnlock(id);
-				else return;
-			}
-		} while (1);
-	}
-
-	void RUnlock(u32 id) {
-		u32 readers;
-		do {
-			readers = rCounter.val;
-			if (CompareSwap32(&(rCounter.val), readers, readers - 1) == readers) {
-				return;
-			}
-		} while (1);
-	}
-
-	void WLock() {
-		do {			
-			while (wLock.val != 0) _mm_pause();
-			if (CompareSwap32(&(wLock.val), 0, 1) == 0) {
-				while (rCounter.val > 0);
-				return;
-			}
-		} while (1);
-	}
-
-
-	void WUnlock() {
-		wLock.val = 0;
-	}
-
-} CACHE_ALIGN;
-*/
 
 
 ///

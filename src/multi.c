@@ -410,7 +410,7 @@ void execBatch(redisClient *c) {
 			{
 				usleep(5000000);
 				ready = 0;
-			}
+				}
 			else {
 				int i;
 				float readRatio = 0.0;
