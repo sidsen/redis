@@ -219,17 +219,20 @@ int replace_rename(const char *src, const char *dest);
 
 //threads avoiding pthread.h
 
-#define pthread_mutex_t SpinLock  //CRITICAL_SECTION
+#define pthread_mutex_t CRITICAL_SECTION
 #define pthread_attr_t ssize_t
 
-#define pthread_mutex_init(a,b) (SpinLock_Init((a)),0)  //(InitializeCriticalSectionAndSpinCount((a), 0x00000fff),0)  // 0x80000400),0)
-#define pthread_mutex_destroy(a) SpinLock_Destroy((a))  //DeleteCriticalSection((a))
-#define pthread_mutex_lock SpinLock_Lock  //EnterCriticalSection
-#define pthread_mutex_trylock(a) (SpinLock_TryLock((a)) == 0)  //(TryEnterCriticalSection((a)) == 0)
-#define pthread_mutex_unlock SpinLock_Unlock  //LeaveCriticalSection
+#define pthread_mutex_init(a,b) (InitializeCriticalSectionAndSpinCount((a), 0x00000fff),0)  // 0x80000400),0)
+#define pthread_mutex_destroy(a) DeleteCriticalSection((a))
+#define pthread_mutex_lock EnterCriticalSection
+#define pthread_mutex_trylock(a) (TryEnterCriticalSection((a)) == 0)
+#define pthread_mutex_unlock LeaveCriticalSection
 
+// Redefine critical section object to our own spinlock
+#define InitializeCriticalSectionAndSpinCount(a,b) (SpinLock_Init((a)),0)
 #define EnterCriticalSection SpinLock_Lock
 #define LeaveCriticalSection SpinLock_Unlock
+#define TryEnterCriticalSection(a) SpinLock_TryLock((a))
 #define CRITICAL_SECTION SpinLock
 #define InitializeCriticalSection SpinLock_Init
 #define DeleteCriticalSection SpinLock_Destroy
