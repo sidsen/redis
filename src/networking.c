@@ -812,7 +812,7 @@ void freeClient(redisClient *c) {
 		c->refcount--;
 		pthread_mutex_unlock(c->ref_lock);
 		//TODO: CHECK FOR DOUBLE FREEING
-		redisAssert(c->lock->LockCount == -2);
+		//redisAssert(c->lock->LockCount == -2);
 		pthread_mutex_unlock(c->lock);
 	}
 }
