@@ -382,13 +382,13 @@ inline void SpinLock_Unlock(SpinLock* lk) {
 }
 
 inline void Backoff(u32 times) {
-	u32 t;
 	u32 max = times;
 	if (max < INIT_EXPB) max = INIT_EXPB;
-	for (t = 0; t < max; ++t) {
+	for (u32 t = 0; t < max; ++t) {
 		_mm_pause();
 	}
 }
+
 
 // New RW Lock
 struct NodeRWLock_DistS {
