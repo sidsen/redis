@@ -17,6 +17,7 @@
 #endif
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #endif
 
 #include <assert.h>
@@ -349,15 +350,15 @@ struct SpinLockS {
 
 typedef struct SpinLockS SpinLock;
 
-inline void SpinLock_Init(SpinLock *lk) {
+inline void SpinLock_Init(SpinLock* lk) {
 	lk->spinvar.val = 0;
 }
 
-inline void SpinLock_Destroy(SpinLock *lk) {
+inline void SpinLock_Destroy(SpinLock* lk) {
 	lk->spinvar.val = MAX_UINT32;
 }
 
-inline void SpinLock_Lock(SpinLock *lk) {
+inline void SpinLock_Lock(SpinLock* lk) {
 	u32 expb = 1;
 	do {
 		while (lk->spinvar.val != 0) {
@@ -368,11 +369,15 @@ inline void SpinLock_Lock(SpinLock *lk) {
 	} while (CompareSwap32(&(lk->spinvar.val), 0, 1) != 0);
 }
 
-inline bool SpinLock_TryLock(SpinLock *lk) {
-	return (CompareSwap32(&(lk->spinvar.val), 0, 1) == 0);
+inline u32 SpinLock_TryLock(SpinLock* lk) {
+	bool result = false;
+	if (lk->spinvar.val == 0) {
+		result = (CompareSwap32(&(lk->spinvar.val), 0, 1) == 0);
+	}
+	return result;
 }
 
-inline void SpinLock_Unlock(SpinLock *lk) {
+inline void SpinLock_Unlock(SpinLock* lk) {
 	lk->spinvar.val = 0;
 }
 
