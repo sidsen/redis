@@ -3423,7 +3423,7 @@ void lockKey(redisClient *c, robj *key) {
 
 int genericLockKey(redisClient *c, robj *key, int trylock) {
 	dictEntry *de;
-	SpinLock* lock = NULL;
+	pthread_mutex_t* lock = NULL;
 
 	//if (!server.locking_mode) return 0;
 
@@ -3431,17 +3431,17 @@ int genericLockKey(redisClient *c, robj *key, int trylock) {
 	de = dictFind(c->db->locked_keys, key->ptr);
 	if (de) {
 		lock = dictGetVal(de);
-		SpinLock_Lock(lock);
+		pthread_mutex_lock(lock);
 		return 0;
 	}
 
 	pthread_mutex_lock(c->db->lock);
 	de = dictFind(c->db->locked_keys, key->ptr);
 	if (!de) {
-		lock = zmalloc(sizeof(SpinLock));
-		SpinLock_Init(lock);
+		lock = zmalloc(sizeof(pthread_mutex_t));
+		pthread_mutex_init(lock);
 		dictAdd(c->db->locked_keys, sdsdup(key->ptr), lock);
-		SpinLock_Lock(lock);
+		pthread_mutex_lock(lock);
 		pthread_mutex_unlock(c->db->lock);
 	}
 	else {
@@ -3459,7 +3459,7 @@ int genericLockKey(redisClient *c, robj *key, int trylock) {
 			//	return 1;
 		}
 		else
-			SpinLock_Lock(lock);
+			pthread_mutex_lock(lock);
 		/* TODO: Replace the lock with a new lock */
 		//dictReplace(c->db->locked_keys, sdsdup(key->ptr), c->lock);
 		pthread_mutex_unlock(c->db->lock);

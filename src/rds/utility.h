@@ -12,9 +12,12 @@
 //#endif
 
 #ifdef _WIN32
+#if (!defined (__cplusplus) && (!defined (inline)))
 #define inline __inline
+#endif
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #endif
 
 #include <assert.h>
@@ -232,7 +235,7 @@ ENDOF MACHINE-SPECIFIC DEFINES
 #define AtomicInc64(ptr64) _InterlockedIncrement64((__int64*)ptr64)
 #define AtomicDec32(ptr32) _InterlockedDecrement((long*)ptr32)
 #define AtomicDec64(ptr64) _InterlockedIncrement64((__int64*)ptr64)
-#define CompareSwap32(ptr32,cmp32,val32) _InterlockedCompareExchange(ptr32,val32,cmp32)
+#define CompareSwap32(ptr32,cmp32,val32) _InterlockedCompareExchange((long*)ptr32,val32,cmp32)
 #define CompareSwap64(ptr64,cmp64,val64) _InterlockedCompareExchange(ptr64,val64,cmp64)
 #define CompareSwapPtr(ptr,cmp,val) _InterlockedCompareExchangePointer((void* volatile*)ptr,val,cmp)
 
@@ -351,6 +354,10 @@ inline void SpinLock_Init(SpinLock* lk) {
 	lk->spinvar.val = 0;
 }
 
+inline void SpinLock_Destroy(SpinLock* lk) {
+	lk->spinvar.val = MAX_UINT32;
+}
+
 inline void SpinLock_Lock(SpinLock* lk) {
 	u32 expb = 1;
 	do {
@@ -360,6 +367,14 @@ inline void SpinLock_Lock(SpinLock* lk) {
 			expb *= 2;
 		}
 	} while (CompareSwap32(&(lk->spinvar.val), 0, 1) != 0);
+}
+
+inline u32 SpinLock_TryLock(SpinLock* lk) {
+	bool result = false;
+	if (lk->spinvar.val == 0) {
+		result = (CompareSwap32(&(lk->spinvar.val), 0, 1) == 0);
+	}
+	return result;
 }
 
 inline void SpinLock_Unlock(SpinLock* lk) {

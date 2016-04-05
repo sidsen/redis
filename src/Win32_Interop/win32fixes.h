@@ -22,6 +22,7 @@
 #define __USE_W32_SOCKETS
 
 #include "..\fmacros.h"
+#include "..\rds\utility.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
@@ -224,8 +225,19 @@ int replace_rename(const char *src, const char *dest);
 #define pthread_mutex_init(a,b) (InitializeCriticalSectionAndSpinCount((a), 0x00000fff),0)  // 0x80000400),0)
 #define pthread_mutex_destroy(a) DeleteCriticalSection((a))
 #define pthread_mutex_lock EnterCriticalSection
+/* The semantics of pthread_mutex's trylock is the *opposite* of CRITICAL_SECTION */
 #define pthread_mutex_trylock(a) (TryEnterCriticalSection((a)) == 0)
 #define pthread_mutex_unlock LeaveCriticalSection
+
+/* CRITICAL_SECTION is quite unfair on the RAMA machine; redefine the above lock to use
+our own spinlock. */
+#define CRITICAL_SECTION SpinLock
+#define InitializeCriticalSection(a) SpinLock_Init((a))
+#define InitializeCriticalSectionAndSpinCount(a,b) (SpinLock_Init((a)))
+#define DeleteCriticalSection(a) SpinLock_Destroy((a))
+#define EnterCriticalSection SpinLock_Lock
+#define TryEnterCriticalSection(a) SpinLock_TryLock((a))
+#define LeaveCriticalSection SpinLock_Unlock
 
 #define pthread_equal(t1, t2) ((t1) == (t2))
 
