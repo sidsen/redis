@@ -1,9 +1,13 @@
-#ifndef _SHAREDDS_H
-#define _SHAREDDS_H
+#ifndef _REPLICATED_DS_H
+#define _REPLICATED_DS_H
 
-//#include "utility.h"
+
+
+#include "utility.h"
 #include "SharedLog.h"
 #include "..\dict.h"
+
+#if defined (METHOD_REPLICATION)
 
 struct RDSS;
 typedef struct RDSS   RDS;
@@ -29,37 +33,6 @@ extern dictType IntDictType;
 #define sl_set_size(s)         RDS_size(s)
 #define sl_set_new()           RDS_new()
 
-
-
-#define CYCLE_BITS   31
-#define CYCLE_MASK   2147483647   // (1 << CYCLE_BITS) - 1
-#define OP_BITS      2            // op only uses the last 2 bits    
-#define OP_MASK      3            // keep op bits discard everything else
-#define NODE_MASK    28           // node mask discards the op bits and uses the next 3 bits for the node
-#define MAX_UINT32   4294967295   // (1 << 32) - 1
-
-
-
-enum {
-	EMPTY,
-	CONTAINS,
-	INSERT,
-	REMOVE,
-	INCRBY
-};
-
-
-struct PaddedSlotS {
-	//volatile u32* resp;
-	PaddedVolatileUInt resp;
-	u32 arg1;
-	u32 arg2;
-	volatile u32 op;	
-	//char pad_[CACHE_LINE - sizeof(volatile u32)-2 * sizeof(u32)-sizeof(volatile u32*)];
-	char pad_[CACHE_LINE - sizeof(volatile u32)-2 * sizeof(u32)];
-} CACHE_ALIGN;
-
-typedef struct PaddedSlotS PaddedSlot;
 
 struct NodeReplica_OPTRS {
 	SharedDSType *localReg;
@@ -106,4 +79,6 @@ u32 RDS_insert(RDS *rds, int thrid, u32 arg1, u32 arg2);
 u32 RDS_incrby(RDS *rds, int thrid, u32 arg1, u32 arg2);
 u32 RDS_remove(RDS *rds, int thrid, u32 arg1, u32 arg2);
 
-#endif  // _SHAREDDS_H
+#endif 
+
+#endif
