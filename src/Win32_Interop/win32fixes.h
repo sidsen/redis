@@ -22,6 +22,7 @@
 #define __USE_W32_SOCKETS
 
 #include "..\fmacros.h"
+#include "..\rds\utility.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
@@ -218,14 +219,20 @@ int replace_rename(const char *src, const char *dest);
 
 //threads avoiding pthread.h
 
-#define pthread_mutex_t CRITICAL_SECTION
+#define pthread_mutex_t SpinLock  //CRITICAL_SECTION
 #define pthread_attr_t ssize_t
 
-#define pthread_mutex_init(a,b) (InitializeCriticalSectionAndSpinCount((a), 0x00000fff),0)  // 0x80000400),0)
-#define pthread_mutex_destroy(a) DeleteCriticalSection((a))
-#define pthread_mutex_lock EnterCriticalSection
-#define pthread_mutex_trylock(a) (TryEnterCriticalSection((a)) == 0)
-#define pthread_mutex_unlock LeaveCriticalSection
+#define pthread_mutex_init(a,b) (SpinLock_Init((a)),0)  //(InitializeCriticalSectionAndSpinCount((a), 0x00000fff),0)  // 0x80000400),0)
+#define pthread_mutex_destroy(a) SpinLock_Destroy((a))  //DeleteCriticalSection((a))
+#define pthread_mutex_lock SpinLock_Lock  //EnterCriticalSection
+#define pthread_mutex_trylock(a) (!SpinLock_TryLock((a)))  //(TryEnterCriticalSection((a)) == 0)
+#define pthread_mutex_unlock SpinLock_Unlock  //LeaveCriticalSection
+
+#define EnterCriticalSection SpinLock_Lock
+#define LeaveCriticalSection SpinLock_Unlock
+#define CRITICAL_SECTION SpinLock
+#define InitializeCriticalSection SpinLock_Init
+#define DeleteCriticalSection SpinLock_Destroy
 
 #define pthread_equal(t1, t2) ((t1) == (t2))
 

@@ -410,7 +410,7 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                     }
                     if (matched == 0) {
                         /* redisLog */printf("Sec:%lld Unknown complete (closed) on %d\n", gettimeofdaysecs(NULL), rfd);
-						pthread_mutex_unlock(sockstate);
+						pthread_mutex_unlock(sockstate->lock);
                         sockstate = NULL;
                     }
                 }
