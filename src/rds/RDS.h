@@ -1,8 +1,6 @@
 #ifndef _REPLICATED_DS_H
 #define _REPLICATED_DS_H
 
-
-
 #include "utility.h"
 #include "SharedLog.h"
 #include "..\dict.h"

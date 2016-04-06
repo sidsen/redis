@@ -1,5 +1,4 @@
 #include "utility.h"
-#include <Windows.h>
 
 __declspec(thread) u16 lfsr = 0xACE1u;
 __declspec(thread) u16 bit;

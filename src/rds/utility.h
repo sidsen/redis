@@ -17,6 +17,9 @@
 #endif
 #include <stdbool.h>
 #include <stddef.h>
+/* Must define this to avoid duplicate definitions when including windows.h */
+#define _WINSOCKAPI_ 
+#include <Windows.h>
 #include <stdio.h>
 #endif
 
@@ -24,7 +27,6 @@
 #include <intrin.h>
 
 #ifdef _MSC_VER
-
 
 #define METHOD_REPLICATION
 //#define METHOD_FLAT_COMBINING
@@ -360,16 +362,20 @@ inline void SpinLock_Destroy(SpinLock* lk) {
 
 inline void SpinLock_Lock(SpinLock* lk) {
 	u32 expb = 1;
+	if (lk->spinvar.val == GetCurrentThreadId() + 1)
+		printf("FAILL!!!!!\n");
 	do {
 		while (lk->spinvar.val != 0) {
 			//Backoff(expb);
 			Backoff(1);
 			expb *= 2;
 		}
-	} while (CompareSwap32(&(lk->spinvar.val), 0, 1) != 0);
+	} while (CompareSwap32(&(lk->spinvar.val), 0, GetCurrentThreadId() + 1) != 0);
 }
 
 inline u32 SpinLock_TryLock(SpinLock* lk) {
+	if (lk->spinvar.val == GetCurrentThreadId() + 1)
+		printf("FAILL!!!!!\n");
 	bool result = false;
 	if (lk->spinvar.val == 0) {
 		result = (CompareSwap32(&(lk->spinvar.val), 0, 1) == 0);

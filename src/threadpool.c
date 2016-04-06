@@ -143,7 +143,7 @@ err:
 	return NULL;
 }
 
-int threadpool_add(threadpool_t *pool, void(*function)(void *),
+int threadpool_add(threadpool_t *pool, void(*function)(void *, int),
 	void *argument, int flags)
 {
 	int err = 0;

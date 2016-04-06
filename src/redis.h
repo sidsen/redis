@@ -1241,7 +1241,7 @@ void zsetConvert(robj *zobj, int encoding);
 
 /* Core functions */
 int freeMemoryIfNeeded(void);
-void callCommandAndResetClient(redisClient *c);
+void callCommandAndResetClient(redisClient *c, int thread_id);
 int processCommand(redisClient *c);
 void setupSignalHandlers(void);
 struct redisCommand *lookupCommand(sds name);
