@@ -406,11 +406,11 @@ void execBatch(redisClient *c) {
 			while (ready != threadCounter) {
 				;
 			}
-			if (c->currthread == 0)
+			if (c->currthread == (server.threadpool_size - 1))
 			{
 				usleep(5000000);
 				ready = 0;
-				}
+			}
 			else {
 				int i;
 				float readRatio = 0.0;
@@ -436,16 +436,24 @@ void execBatch(redisClient *c) {
 					call(c, REDIS_CALL_FULL);
 				}
 				u64 endTime = ustime();
-				fprintf(stdout, "Total operations performed is %d, done in %f ms\n", i, (endTime - startTime) / 1000.0);
+				fprintf(stdout, "Total operations performed is %10d, done in %f ms\n", i, (endTime - startTime) / 1000.0);
 				fflush(stdout);
 			}
-			Sleep(100000);
+			usleep(1000000);
+			// Mimic end as per below
+			c->argv = orig_argv;
+			c->argc = orig_argc;
+			c->cmd = orig_cmd;
 			return;
 		}
 
-		//if (c->cmd->proc == zaddCommand) {
-		call(c, REDIS_CALL_FULL);
-		//}
+		//SIDTEMP: THE MEASURMENT THREAD SHOULD NOT INVOKE ANY OPS
+		if (c->currthread != server.threadpool_size - 1) {
+			call(c, REDIS_CALL_FULL);
+		}
+		else {
+			addReplyLongLong(c, 1);
+		}
 
 		/* Commands may alter argc/argv, restore bstate. */
 		c->bstate.commands[j].argc = c->argc;

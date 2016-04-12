@@ -221,8 +221,9 @@ int replace_rename(const char *src, const char *dest);
 
 #define pthread_mutex_t CRITICAL_SECTION
 #define pthread_attr_t ssize_t
+#define CRIT_SEC_SPIN_COUNT 0x80000400  //0x1E848000   // 0x00000fff  // 0x80000400
 
-#define pthread_mutex_init(a,b) (InitializeCriticalSectionAndSpinCount((a), 0xF4240000),0)  // 0x00000fff),0)  // 0x80000400),0)
+#define pthread_mutex_init(a,b) (InitializeCriticalSectionAndSpinCount((a), CRIT_SEC_SPIN_COUNT),0) 
 #define pthread_mutex_destroy(a) DeleteCriticalSection((a))
 #define pthread_mutex_lock EnterCriticalSection
 /* The semantics of pthread_mutex's trylock is the *opposite* of CRITICAL_SECTION */

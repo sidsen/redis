@@ -238,7 +238,7 @@ int pthread_cond_init(pthread_cond_t *cond, const void *unused) {
         cond->waiters = 0;
         cond->was_broadcast = 0;
 
-        InitializeCriticalSection(&cond->waiters_lock);
+        InitializeCriticalSectionAndSpinCount(&cond->waiters_lock, CRIT_SEC_SPIN_COUNT);
 
         cond->sema = CreateSemaphore(NULL, 0, LONG_MAX, NULL);
         if (!cond->sema) {
