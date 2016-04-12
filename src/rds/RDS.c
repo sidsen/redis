@@ -474,6 +474,12 @@ inline bool BetweenLocalAndTail(RDS *rds, u32 readTail, u32 localTail, u32 tail)
 	}
 }
 
+static const u32 COMBINER_HOLD_TIME_MS = 5;
+//IRINA: Is this sufficient, or does the timer need to be volatile as well?
+volatile bool combinerHold = false;
+volatile u64 combinerStart = 0;
+u32 combinerId = 0;
+
 u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 nextOp;
 	u32 counter, startInd, finalInd;	
@@ -484,13 +490,36 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg2 = arg2;	
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].op = op;
 
+	//<SID-OPT>
+	// This allows any thread to release the combiner hold. We are not protecting this code
+	// with a lock, but it should not result in corrupt state and in the worst case 
+	// multiple threads will attempt to grab the combiner lock below
+	if (combinerHold && (ustime() - combinerStart > COMBINER_HOLD_TIME_MS)) {
+		combinerHold = false;
+		// This is superfluous since we've already read the elapsed time, but include
+		// it to avoid confusion
+		combinerStart = 0;
+	}
+	//<SID-OPT>
+
 	do {
 
 		if ((rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0) 
 			&& (rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0)
 			&& (rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0)
-			&& (CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1) == 0)) {
+			&& (((combinerHold && combinerId == myIndex) || !combinerHold) &&
+			(CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1) == 0))) {
+
 			// I am the Combiner
+
+			//<SID-OPT>
+			// Start the combiner hold timer if it hasn't been started already
+			if (!combinerHold) {
+				combinerHold = true;
+				combinerId = myIndex;
+				combinerStart = ustime();
+			}
+			//<SID-OPT>
 
 			int howMany = 0;
 			u32 index;
