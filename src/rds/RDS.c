@@ -490,19 +490,19 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg2 = arg2;	
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].op = op;
 
-	//<SID-OPT>
-	// This allows any thread to release the combiner hold. We are not protecting this code
-	// with a lock, but it should not result in corrupt state and in the worst case 
-	// multiple threads will attempt to grab the combiner lock below
-	if (combinerHold && (ustime() - combinerStart > COMBINER_HOLD_TIME_MS)) {
-		combinerHold = false;
-		// This is superfluous since we've already read the elapsed time, but include
-		// it to avoid confusion
-		combinerStart = 0;
-	}
-	//<SID-OPT>
-
 	do {
+
+		//<SID-OPT>
+		// This allows any thread to release the combiner hold. We are not protecting this code
+		// with a lock, but it should not result in corrupt state and in the worst case 
+		// multiple threads will attempt to grab the combiner lock below
+		if (combinerHold && (ustime() - combinerStart > COMBINER_HOLD_TIME_MS)) {
+			combinerHold = false;
+			// This is superfluous since we've already read the elapsed time, but include
+			// it to avoid confusion
+			combinerStart = 0;
+		}
+		//<SID-OPT>
 
 		if ((rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0) 
 			&& (rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0)
@@ -515,7 +515,8 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			//<SID-OPT>
 			// Start the combiner hold timer if it hasn't been started already
 			if (!combinerHold) {
-				combinerHold = true;
+				//SID-OPT: DISABLE THE OPTIMIZATION FOR NOW
+				//combinerHold = true;
 				combinerId = myIndex;
 				combinerStart = ustime();
 			}
