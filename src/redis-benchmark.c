@@ -1063,7 +1063,7 @@ int main(int argc, const char **argv) {
 
 		if (test_is_selected("zincrby"))
 		{
-			len = redisFormatCommand(&cmd, "ZINCRBY mysortedset 3 __rand_int__");
+			len = redisFormatCommand(&cmd, "ZINCRBY mysortedset __rand_int__ __rand_int__");
 			benchmark("ZINCRBY", cmd, len);
 			free(cmd);
 		}
@@ -1091,7 +1091,7 @@ int main(int argc, const char **argv) {
 			char *cmd2;
 			int len2;
 			len = redisFormatCommand(&cmd, "ZRANK mysortedset___z_rand__ __rand_int__");
-			len2 = redisFormatCommand(&cmd2, "ZINCRBY mysortedset___z_rand__ 3 __rand_int__");
+			len2 = redisFormatCommand(&cmd2, "ZINCRBY mysortedset___z_rand__ __rand_int__ __rand_int__");
 			dual_benchmark("ZRANK/ZINCRBY", cmd, len, cmd2, len2);
 			free(cmd);
 			free(cmd2);
