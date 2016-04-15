@@ -1080,7 +1080,7 @@ int main(int argc, const char **argv) {
 			char *cmd2;
 			int len2;
 			len = redisFormatCommand(&cmd, "ZRANK mysortedset __rand_int__");
-			len2 = redisFormatCommand(&cmd2, "ZINCRBY mysortedset 3 __rand_int__");
+			len2 = redisFormatCommand(&cmd2, "ZINCRBY mysortedset __rand_int__ __rand_int__");
 			dual_benchmark("ZRANK/ZINCRBY", cmd, len, cmd2, len2);
 			free(cmd);
 			free(cmd2);
