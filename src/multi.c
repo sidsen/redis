@@ -403,12 +403,13 @@ void execBatch(redisClient *c) {
 		}
 		if (readCmd.cmd != 0 && writeCmd.cmd != 0)
 		{
+			// Initialize the array for storing results
+			if ((c->currthread == server.threadpool_size - 1) && (totalOps == NULL)) {
+				totalOps = zmalloc(server.threadpool_size * sizeof(u32));
+				memset(totalOps, 0, server.threadpool_size * sizeof(u32));
+			}
+			// Run the experiment exp-trials times
 			do {
-				// Initialize the array for storing results before indicating readiness
-				if ((c->currthread == server.threadpool_size - 1) && (totalOps == NULL)) {
-					totalOps = zmalloc(server.threadpool_size * sizeof(u32));
-					memset(totalOps, 0, server.threadpool_size * sizeof(u32));
-				}
 				AtomicInc32(&ready);
 				while (ready != threadCounter) {
 					;
@@ -417,6 +418,7 @@ void execBatch(redisClient *c) {
 					usleep(server.exp_duration_us);
 					// Indicates to all threads that the experiment is over
 					ready = 0;
+					trials++;
 				}
 				else {
 					u32 i;
@@ -438,10 +440,9 @@ void execBatch(redisClient *c) {
 						call(c, REDIS_CALL_FULL);
 					}
 					totalOps[c->currthread] += i;
-					//fprintf(stdout, "Total operations performed is %10d, done in %f ms\n", i, (endTime - startTime) / 1000.0);
-					//fflush(stdout);
+					fprintf(stdout, "Total operations performed is %10d\n", i);
+					fflush(stdout);
 				}
-				usleep(2000000);
 				// Mimic end as per below
 				c->argv = orig_argv;
 				c->argc = orig_argc;
@@ -449,6 +450,14 @@ void execBatch(redisClient *c) {
 			} 
 			while (trials < server.exp_trials);
 
+			// Print the final results and exit redis
+			u64 sumOps = 0;
+			for (int j = 0; j < server.threadpool_size - 1; j++) {
+				sumOps += totalOps[j];
+			}
+			fprintf(stdout, "Experiment results (trials = %d, duration = %d, keyrange = %d, read ratio = %f): %10f ops/sec\n",
+				server.exp_trials, server.exp_duration_us, server.exp_keyrange, server.exp_read_ratio, sumOps / (server.exp_trials * (server.exp_duration_us / 1000000.0)));
+			fflush(stdout);
 			// Exit redis to end the experiment
 			exit(0);
 		}
