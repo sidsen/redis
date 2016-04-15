@@ -546,6 +546,18 @@ void loadServerConfigFromString(char *config) {
 		else if (!strcasecmp(argv[0], "norepl")) {
 			server.no_repl = 1;
 		}
+		else if (!strcasecmp(argv[0], "exp-trials")) {
+			server.exp_trials = strtol(argv[1], NULL, 10);
+		}
+		else if (!strcasecmp(argv[0], "exp-duration-us")) {
+			server.exp_duration_us = strtoll(argv[1], NULL, 10);
+		}
+		else if (!strcasecmp(argv[0], "exp-keyrange")) {
+			server.exp_keyrange = strtoll(argv[1], NULL, 10);
+		}
+		else if (!strcasecmp(argv[0], "exp-read-ratio")) {
+			server.exp_read_ratio = strtof(argv[1], NULL);
+		}
 		else if (!strcasecmp(argv[0], "wm") && argc == 2) {
 			server.work_multiplier = strtoll(argv[1], NULL, 10);
 		}

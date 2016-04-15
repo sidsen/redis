@@ -368,10 +368,11 @@ void discardBatch(redisClient *c) {
 	initClientBatchState(c);
 }
 
-//SID:TEMPORARY CODE FOR TESTING
+//SID-BENCH: CODE BELOW HAS BEEN MODIFIED FOR BENCHMARKING
 __declspec(thread) struct multiCmd readCmd = { 0 };
 __declspec(thread) struct multiCmd writeCmd = { 0 };
-
+u32* totalOps = NULL;
+u16 trials = 0;
 volatile u32 ready = 0;
 
 void execBatch(redisClient *c) {
@@ -389,7 +390,7 @@ void execBatch(redisClient *c) {
 		c->argv = c->bstate.commands[j].argv;
 		c->cmd = c->bstate.commands[j].cmd;
 
-		//SID: TEMPORARY CODE FOR TESTING
+		//SID: TEMPORARY CODE FOR BENCHMARKING
 		if (readCmd.cmd == 0 && c->cmd->proc == zrankCommand) {
 			readCmd.argc = c->argc;
 			readCmd.argv = c->argv;
@@ -402,49 +403,54 @@ void execBatch(redisClient *c) {
 		}
 		if (readCmd.cmd != 0 && writeCmd.cmd != 0)
 		{
-			AtomicInc32(&ready);
-			while (ready != threadCounter) {
-				;
-			}
-			if (c->currthread == (server.threadpool_size - 1))
-			{
-				usleep(5000000);
-				ready = 0;
-			}
-			else {
-				int i;
-				float readRatio = 0.0;
-				int keyrange = 10000;
-				int totalOps = 100000;
-				fprintf(stdout, "Starting local operations in worker thread %d\n", c->currthread);
-				fflush(stdout);
-				u64 startTime = ustime();
-				for (i = 0; ready != 0; i++)
-				{
-					if (false && rand() <= readRatio * UINT_MAX)
-					{
-						c->argc = readCmd.argc;
-						c->argv = readCmd.argv;
-						c->cmd = readCmd.cmd;
-					}
-					else
-					{
-						c->argc = writeCmd.argc;
-						c->argv = writeCmd.argv;
-						c->cmd = writeCmd.cmd;
-					}
-					call(c, REDIS_CALL_FULL);
+			do {
+				// Initialize the array for storing results before indicating readiness
+				if ((c->currthread == server.threadpool_size - 1) && (totalOps == NULL)) {
+					totalOps = zmalloc(server.threadpool_size * sizeof(u32));
+					memset(totalOps, 0, server.threadpool_size * sizeof(u32));
 				}
-				u64 endTime = ustime();
-				fprintf(stdout, "Total operations performed is %10d, done in %f ms\n", i, (endTime - startTime) / 1000.0);
-				fflush(stdout);
-			}
-			usleep(1000000);
-			// Mimic end as per below
-			c->argv = orig_argv;
-			c->argc = orig_argc;
-			c->cmd = orig_cmd;
-			return;
+				AtomicInc32(&ready);
+				while (ready != threadCounter) {
+					;
+				}
+				if (c->currthread == (server.threadpool_size - 1)) {
+					usleep(server.exp_duration_us);
+					// Indicates to all threads that the experiment is over
+					ready = 0;
+				}
+				else {
+					u32 i;
+					float readRatio = server.exp_read_ratio;
+					for (i = 0; ready != 0; i++)
+					{
+						if (randLFSR() <= readRatio * USHRT_MAX)
+						{
+							c->argc = readCmd.argc;
+							c->argv = readCmd.argv;
+							c->cmd = readCmd.cmd;
+						}
+						else
+						{
+							c->argc = writeCmd.argc;
+							c->argv = writeCmd.argv;
+							c->cmd = writeCmd.cmd;
+						}
+						call(c, REDIS_CALL_FULL);
+					}
+					totalOps[c->currthread] += i;
+					//fprintf(stdout, "Total operations performed is %10d, done in %f ms\n", i, (endTime - startTime) / 1000.0);
+					//fflush(stdout);
+				}
+				usleep(2000000);
+				// Mimic end as per below
+				c->argv = orig_argv;
+				c->argc = orig_argc;
+				c->cmd = orig_cmd;
+			} 
+			while (trials < server.exp_trials);
+
+			// Exit redis to end the experiment
+			exit(0);
 		}
 
 		//SIDTEMP: THE MEASURMENT THREAD SHOULD NOT INVOKE ANY OPS

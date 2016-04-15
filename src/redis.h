@@ -414,6 +414,12 @@ typedef long long mstime_t; /* millisecond time type. */
 /* This is used to create additional work to overcome the RPC bottleneck */
 #define REDIS_DEFAULT_WORK_MULTIPLIER 0
 
+/* Experiment defaults */
+#define REDIS_DEFAULT_EXP_TRIALS 5
+#define REDIS_DEFAULT_EXP_DURATION_US 2000000
+#define REDIS_DEFAULT_EXP_READ_RATIO 0.0
+#define REDIS_DEFAULT_EXP_KEYRANGE 10000
+
 /* Using the following macro you can run code inside serverCron() with the
  * specified period, specified in milliseconds.
  * The actual resolution depends on server.hz. */
@@ -915,6 +921,11 @@ struct redisServer {
 	/* Replicated data structures (RDS) state */
 	RDS* rds;
 	int no_repl;
+	/* Experimental flags for RDS */
+	unsigned int exp_trials;
+	unsigned long exp_duration_us;
+	unsigned long exp_keyrange;
+	float exp_read_ratio;
 
 	//int locking_mode;        /* if this is 0, locking should be unnecessary */
 };

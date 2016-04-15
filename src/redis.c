@@ -1465,6 +1465,10 @@ void initServerConfig(void) {
 	server.work_multiplier = REDIS_DEFAULT_WORK_MULTIPLIER;
 	server.rds = NULL;
 	server.no_repl = 0;
+	server.exp_trials = REDIS_DEFAULT_EXP_TRIALS;
+	server.exp_duration_us = REDIS_DEFAULT_EXP_DURATION_US;
+	server.exp_keyrange = REDIS_DEFAULT_EXP_KEYRANGE;
+	server.exp_read_ratio = REDIS_DEFAULT_EXP_READ_RATIO;
 
     updateLRUClock();
     resetServerSaveParams();
