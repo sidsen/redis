@@ -537,7 +537,8 @@ dictEntry *dictFind(dict *d, const void *key)
     unsigned int h, idx, table;
 
     if (d->ht[0].size == 0) return NULL; /* We don't have a table at all */
-    if (dictIsRehashing(d)) _dictRehashStep(d);
+	//SID-OPT: COMMENTING OUT TO ENSURE READ-ONLY!
+    //if (dictIsRehashing(d)) _dictRehashStep(d);
     h = dictHashKey(d, key);
     for (table = 0; table <= 1; table++) {
         idx = h & d->ht[table].sizemask;

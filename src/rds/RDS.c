@@ -496,7 +496,7 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 		// This allows any thread to release the combiner hold. We are not protecting this code
 		// with a lock, but it should not result in corrupt state and in the worst case 
 		// multiple threads will attempt to grab the combiner lock below
-		if (combinerHold && (ustime() - combinerStart > COMBINER_HOLD_TIME_MS)) {
+		if (combinerHold && ((ustime() - combinerStart) / 1000.0 > COMBINER_HOLD_TIME_MS)) {
 			combinerHold = false;
 			// This is superfluous since we've already read the elapsed time, but include
 			// it to avoid confusion
@@ -516,7 +516,7 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			// Start the combiner hold timer if it hasn't been started already
 			if (!combinerHold) {
 				//SID-OPT: DISABLE THE OPTIMIZATION FOR NOW
-				//combinerHold = true;
+				combinerHold = true;
 				combinerId = myIndex;
 				combinerStart = ustime();
 			}
