@@ -348,15 +348,14 @@ typedef struct PaddedSlotS PaddedSlot;
 // Spinlock 
 struct SpinLockS {
 	PaddedVolatileUInt spinvar;
-	u32 threadId;
-	u32 cnt;
+	PaddedVolatileUInt cnt;
 } CACHE_ALIGN;
 
 typedef struct SpinLockS SpinLock;
 
 inline void SpinLock_Init(SpinLock* lk) {
 	lk->spinvar.val = 0;
-	lk->cnt = 0;
+	lk->cnt.val = 0;
 }
 
 inline void SpinLock_Destroy(SpinLock* lk) {
@@ -365,8 +364,8 @@ inline void SpinLock_Destroy(SpinLock* lk) {
 
 inline void SpinLock_Lock(SpinLock* lk) {
 	// Check for reentrant lock attempts
-	if ((lk->spinvar.val != 0) && (lk->threadId == GetCurrentThreadId())) {
-		lk->cnt++;
+	if (lk->spinvar.val == GetCurrentThreadId() + 1) {
+		lk->cnt.val++;
 		return;
 	}
 
@@ -377,31 +376,34 @@ inline void SpinLock_Lock(SpinLock* lk) {
 			Backoff(1);
 			expb *= 2;
 		}
-	} while (CompareSwap32(&(lk->spinvar.val), 0, 1) != 0);
+	} while (CompareSwap32(&(lk->spinvar.val), 0, GetCurrentThreadId() + 1) != 0);
 	// Lock acquired
-	lk->threadId = GetCurrentThreadId();
-	lk->cnt = 1;
+	lk->cnt.val = 1;
 }
 
 inline u32 SpinLock_TryLock(SpinLock* lk) {
 	// Check for reentrant lock attempts
-	if ((lk->spinvar.val != 0) && (lk->threadId == GetCurrentThreadId())) {
-		lk->cnt++;
-		return true;;
+	if (lk->spinvar.val == GetCurrentThreadId() + 1) {
+		lk->cnt.val++;
+		return true;
 	}
 
 	bool result = false;
 	if (lk->spinvar.val == 0) {
-		result = (CompareSwap32(&(lk->spinvar.val), 0, 1) == 0);
+		result = (CompareSwap32(&(lk->spinvar.val), 0, GetCurrentThreadId() + 1) == 0);
+		// If the lock was successfully acquired, set the counter
+		if (result) {
+			lk->cnt.val = 1;
+		}
 	}
 	return result;
 }
 
 inline void SpinLock_Unlock(SpinLock* lk) {
-	if (lk->threadId == GetCurrentThreadId()) {
-		lk->cnt--;
+	if (lk->spinvar.val == GetCurrentThreadId() + 1) {
+		lk->cnt.val--;
 		// Only release the lock when the reentrant count reaches 0
-		if (lk->cnt == 0) {
+		if (lk->cnt.val == 0) {
 			lk->spinvar.val = 0;
 		}
 	}
