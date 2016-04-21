@@ -72,8 +72,10 @@ typedef long long mstime_t; /* millisecond time type. */
 #include "util.h"    /* Misc functions useful in many places */
 #include "latency.h" /* Latency monitor API */
 #include "sparkline.h" /* ASII graphs API */
-//TODO:RDS
+
+/* Concurrent data structure techniques we are experimenting with */
 #include "RDS.h"
+#include "fc.h"
 //extern struct RDS;
 
 #include "redisLog.h" /* moved logging for hiredis and RedisCli usage /*
@@ -920,7 +922,10 @@ struct redisServer {
 	
 	/* Replicated data structures (RDS) state */
 	RDS* rds;
-	int no_repl;
+	int repl;
+	/* Flat combining (FC) state */
+	FC* fcds;
+	int fc;
 	/* Experimental flags for RDS */
 	unsigned int exp_trials;
 	unsigned long exp_duration_us;

@@ -1331,7 +1331,7 @@ cleanup:
 }
 
 /* This generic command implements both ZADD and ZINCRBY. */
-void zaddGenericCommandRepl(redisClient *c, int incr) {
+void zaddGenericCommandReplFC(redisClient *c, int incr, int fc) {
 	static char *nanerr = "resulting score is not a number (NaN)";
 	robj *key = c->argv[1];
 	robj *ele;
@@ -1361,11 +1361,20 @@ void zaddGenericCommandRepl(redisClient *c, int incr) {
 		ele = c->argv[3 + j * 2]; // = tryObjectEncoding(c->argv[3 + j * 2]);
 		int success;
 		if (incr) {
-			success = RDS_incrby(rds, c->currthread, (u32)(score), ((ustime() << 16) | randLFSR()) % server.exp_keyrange);
-			//printf("ZINCRBY called!\n");
+			if (fc) {
+				success = FC_incrby(fc, c->currthread, (u32)(score), ((ustime() << 16) | randLFSR()) % server.exp_keyrange);
+			}
+			else {
+				success = RDS_incrby(rds, c->currthread, (u32)(score), ((ustime() << 16) | randLFSR()) % server.exp_keyrange);
+			}
 		}
 		else {
-			success = RDS_insert(rds, c->currthread, (u32)(score), strtol(ele->ptr, NULL, 10));
+			if (fc) {
+				success = FC_insert(fc, c->currthread, (u32)(score), strtol(ele->ptr, NULL, 10));
+			}
+			else {
+				success = RDS_insert(rds, c->currthread, (u32)(score), strtol(ele->ptr, NULL, 10));
+			}
 		}
 		if (!success) {
 			addReplyError(c, nanerr);
@@ -1441,20 +1450,20 @@ int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 }
 
 void zaddCommand(redisClient *c) {
-	if (server.no_repl) {
-		zaddGenericCommand(c, 0);
+	if (server.repl || server.fc) {
+		zaddGenericCommandReplFC(c, 0, server.fc);
 	}
 	else {
-		zaddGenericCommandRepl(c, 0);
+		zaddGenericCommand(c, 0);
 	}
 }
 
 void zincrbyCommand(redisClient *c) {
-	if (server.no_repl) {
-		zaddGenericCommand(c, 1);
+	if (server.repl || server.fc) {
+		zaddGenericCommandReplFC(c, 1, server.fc);
 	}
 	else {
-		zaddGenericCommandRepl(c, 1);
+		zaddGenericCommand(c, 1);
 	}
 }
 
@@ -3001,7 +3010,7 @@ void zrankGenericCommand(redisClient *c, int reverse) {
 	unlockKey(c, key);
 }
 
-void zrankGenericCommandRepl(redisClient *c, int reverse) {
+void zrankGenericCommandReplFC(redisClient *c, int reverse, int fc) {
 	robj *key = c->argv[1];
 	robj *ele = c->argv[2];
 	robj *zobj;
@@ -3051,7 +3060,12 @@ void zrankGenericCommandRepl(redisClient *c, int reverse) {
 		
 		//TODO:PERF USELESS AS STRTOL FUNC USED FAILS ON LEADING ZEROS
 		ele = c->argv[2]; // = tryObjectEncoding(c->argv[2]);
-		rank = RDS_contains(rds, c->currthread, ((ustime() << 16) | randLFSR()) % server.exp_keyrange, 0);
+		if (fc) {
+			rank = FC_contains(fc, c->currthread, ((ustime() << 16) | randLFSR()) % server.exp_keyrange, 0);
+		}
+		else {
+			rank = RDS_contains(rds, c->currthread, ((ustime() << 16) | randLFSR()) % server.exp_keyrange, 0);
+		}
 		if (c->noReply) {
 			return;
 		}
@@ -3100,11 +3114,11 @@ int zrankGenericCommandLocal(robj* zobj, int member) {
 }
 
 void zrankCommand(redisClient *c) {
-	if (server.no_repl) {
-		zrankGenericCommand(c, 0);
+	if (server.repl || server.fc) {
+		zrankGenericCommandReplFC(c, 0, server.fc);
 	}
 	else {
-		zrankGenericCommandRepl(c, 0);
+		zrankGenericCommand(c, 0);
 	}
 }
 

@@ -2,7 +2,6 @@
 //TODO:RDS
 #include "..\redis.h"
 
-#if defined (METHOD_REPLICATION)
 
 //TODO:RDS TEMPORARILY CREATE GLOBAL 
 RDS* rds;
@@ -10,6 +9,7 @@ u32 threadCounter = 0;
 dict* thread_ids;
 
 /* Hash type hash table (note that small hashes are represented with ziplists) */
+#if not defined(IntDictType)
 dictType IntDictType = {
 	dictIntHashFunction,             /* hash function */
 	NULL,                       /* key dup */
@@ -18,6 +18,7 @@ dictType IntDictType = {
 	NULL,						/* key destructor */
 	NULL						/* val destructor */
 };
+#endif
 
 /**********************************************************
 **                    LOCAL
@@ -739,4 +740,3 @@ void RDS_Finish(RDS *rds) {
 
 
 
-#endif

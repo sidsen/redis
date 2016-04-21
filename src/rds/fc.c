@@ -3,16 +3,13 @@
 //FLAT COMBINING
 #include "..\redis.h"
 
-
-#if defined (METHOD_FLAT_COMBINING)
-
-
-//TODO:RDS TEMPORARILY CREATE GLOBAL 
+//TODO:FC TEMPORARILY CREATE GLOBAL 
 FC* fc;
-u32 threadCounter = 0;
-dict* thread_ids;
+u32 threadCounter_fc = 0;
+dict* thread_ids_fc;
 
 /* Hash type hash table (note that small hashes are represented with ziplists) */
+#ifndef IntDictType
 dictType IntDictType = {
 	dictIntHashFunction,             /* hash function */
 	NULL,                       /* key dup */
@@ -21,6 +18,7 @@ dictType IntDictType = {
 	NULL,						/* key destructor */
 	NULL						/* val destructor */
 };
+#endif
 
 /**********************************************************
 **                    LOCAL
@@ -47,13 +45,13 @@ inline u32 FC_incrby_local(FC *fc, int thrid, u32 arg1, u32 arg2) {
 inline u32 Execute_local(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 	switch (op) {
 	case CONTAINS:
-		return RDS_contains_local(fc, thrid, arg1, arg2);
+		return FC_contains_local(fc, thrid, arg1, arg2);
 	case INSERT:
-		return RDS_insert_local(fc, thrid, arg1, arg2);
+		return FC_insert_local(fc, thrid, arg1, arg2);
 	case REMOVE:
-		return RDS_remove_local(fc, thrid, arg1, arg2);
+		return FC_remove_local(fc, thrid, arg1, arg2);
 	case INCRBY:
-		return RDS_incrby_local(fc, thrid, arg1, arg2);
+		return FC_incrby_local(fc, thrid, arg1, arg2);
 	default:
 		redisAssert(0);
 	}
@@ -90,46 +88,46 @@ inline void DoOp(FC *fc, u32 thrid, u32 op, u32 arg1, u32 arg2) {
 }
 
 
-u32 Combine(FC *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
+u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 nextOp;
 	u32 counter, startInd, finalInd;	
 	u32 index;
 	u32 myIndex = thrid % NUM_THREADS_PER_NODE;
 
-	rds->slot[myIndex].resp.val = MAX_UINT32;
-	rds->slot[myIndex].arg1 = arg1;
-	rds->slot[myIndex].arg2 = arg2;	
-	rds->slot[myIndex].op = op;
+	fc->slot[myIndex].resp.val = MAX_UINT32;
+	fc->slot[myIndex].arg1 = arg1;
+	fc->slot[myIndex].arg2 = arg2;	
+	fc->slot[myIndex].op = op;
 
 	do {
 
-		if ((rds->combinerLock.val == 0) 
-			&& (rds->combinerLock.val == 0)
-			&& (rds->combinerLock.val == 0)
-			&& (CompareSwap32(&(rds->combinerLock.val), 0, 1) == 0)) {
+		if ((fc->combinerLock.val == 0) 
+			&& (fc->combinerLock.val == 0)
+			&& (fc->combinerLock.val == 0)
+			&& (CompareSwap32(&(fc->combinerLock.val), 0, 1) == 0)) {
 			// I am the Combiner		
 
 			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {		
-				nextOp = rds->slot[index].op  & CYCLE_MASK;
-				rds->slot[index].op = EMPTY;
-				rds->slot[index].resp.val = Execute_local(rds, thrid, nextOp, rds->slot[index].arg1, rds->slot[index].arg2);
+				nextOp = fc->slot[index].op  & CYCLE_MASK;
+				fc->slot[index].op = EMPTY;
+				fc->slot[index].resp.val = Execute_local(fc, thrid, nextOp, fc->slot[index].arg1, fc->slot[index].arg2);
 			}
 
-			rds->combinerLock.val = 0;
+			fc->combinerLock.val = 0;
 
-			redisAssert(rds->slot[myIndex].resp.val != MAX_UINT32);
-			return rds->slot[myIndex].resp.val;
+			redisAssert(fc->slot[myIndex].resp.val != MAX_UINT32);
+			return fc->slot[myIndex].resp.val;
 		}
 		else {
 			// not combiner, wait for response or wait to become combiner
 
-			while ((rds->slot[myIndex].resp.val == MAX_UINT32) 
-				&&  (rds->combinerLock.val != 0)) {
+			while ((fc->slot[myIndex].resp.val == MAX_UINT32) 
+				&&  (fc->combinerLock.val != 0)) {
 				_mm_pause();
 			}
 
-			if (rds->slot[myIndex].resp.val != MAX_UINT32) {
-				return rds->slot[myIndex].resp.val;
+			if (fc->slot[myIndex].resp.val != MAX_UINT32) {
+				return fc->slot[myIndex].resp.val;
 			}
 		}			
 			
@@ -163,29 +161,29 @@ void FC_Start(FC *fc) {
 FC* FC_new() {
 	FC *fc = (FC *)malloc(sizeof(FC));	
 	FC_Start(fc);
-	thread_ids = dictCreate(&IntDictType, NULL);
-	dictExpand(thread_ids, MAX_THREADS);
+	thread_ids_fc = dictCreate(&IntDictType, NULL);
+	dictExpand(thread_ids_fc, MAX_THREADS);
 	return fc;
 }
 
-void FC_StartThread(RDS *rds, int thrid) {
-	dictAdd(thread_ids, GetCurrentThreadId(), thrid);
+void FC_StartThread(FC *fc, int thrid) {
+	dictAdd(thread_ids_fc, GetCurrentThreadId(), thrid);
 }
 
 u32 FC_contains(FC *fc, int thrid, u32 arg1, u32 arg2) {	
-	return Combine(fc, thrid, CONTAINS, arg1, arg2);
+	return Combine_fc(fc, thrid, CONTAINS, arg1, arg2);
 }
 
 u32 FC_insert(FC *fc, int thrid, u32 arg1, u32 arg2) {
-	return Combine(fc, thrid, INSERT, arg1, arg2);		
+	return Combine_fc(fc, thrid, INSERT, arg1, arg2);		
 }
 
 u32 FC_incrby(FC *fc, int thrid, u32 arg1, u32 arg2) {
-	return Combine(fc, thrid, INCRBY, arg1, arg2);
+	return Combine_fc(fc, thrid, INCRBY, arg1, arg2);
 }
 
 u32 FC_remove(FC *fc, int thrid, u32 arg1, u32 arg2) {
-	return Combine(fc, thrid, REMOVE, arg1, arg2);
+	return Combine_fc(fc, thrid, REMOVE, arg1, arg2);
 }
 
 void FC_FinishThread(FC *fc, int thrid) {
@@ -193,7 +191,3 @@ void FC_FinishThread(FC *fc, int thrid) {
 
 void FC_Finish(FC *fc) {
 }
-
-
-
-#endif

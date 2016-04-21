@@ -28,7 +28,7 @@
 
 #ifdef _MSC_VER
 
-#define METHOD_REPLICATION
+//#define METHOD_REPLICATION
 //#define METHOD_FLAT_COMBINING
 
 /*******************************************************

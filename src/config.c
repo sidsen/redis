@@ -543,8 +543,11 @@ void loadServerConfigFromString(char *config) {
                 if (err) goto loaderr;
             }
 		}
-		else if (!strcasecmp(argv[0], "norepl")) {
-			server.no_repl = 1;
+		else if (!strcasecmp(argv[0], "repl")) {
+			server.repl = 1;
+		}
+		else if (!strcasecmp(argv[0], "fc")) {
+			server.fc = 1;
 		}
 		else if (!strcasecmp(argv[0], "exp-trials")) {
 			server.exp_trials = strtol(argv[1], NULL, 10);

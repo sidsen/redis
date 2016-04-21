@@ -1464,7 +1464,9 @@ void initServerConfig(void) {
 	server.threadpool_size = REDIS_THREADPOOL_DEFAULT_SIZE;
 	server.work_multiplier = REDIS_DEFAULT_WORK_MULTIPLIER;
 	server.rds = NULL;
-	server.no_repl = 0;
+	server.repl = 0;
+	server.fcds = NULL;
+	server.fc = 0;
 	server.exp_trials = REDIS_DEFAULT_EXP_TRIALS;
 	server.exp_duration_us = REDIS_DEFAULT_EXP_DURATION_US;
 	server.exp_keyrange = REDIS_DEFAULT_EXP_KEYRANGE;
@@ -1883,8 +1885,11 @@ void initServer(void) {
     }
 
 	//TODO:RDS SHOULD ONLY SETUP RDS IF SPECIFIED, BUT COMMENT FOR NOW SINCE TOO MANY DEPENDENCIES
-	if (!server.no_repl) {
+	if (server.repl) {
 		rds = RDS_new();
+	}
+	else if (server.fc) {
+		fc = FC_new();
 	}
 
 	//if (server.threadpool_size == -1)
@@ -2193,14 +2198,6 @@ void callCommandAndResetClient(redisClient *c, int thread_id) {
 
 	/* Experiment with duplicating work to relieve RPC bottleneck */
 	if (strcmp(c->bstate.commands[0].cmd->name, "zrank") == 0 || strcmp(c->bstate.commands[0].cmd->name, "zincrby") == 0) {
-		/*
-		u32 result = AtomicDec32(&threadCounter);
-		fprintf(stdout, "Threadcounter is %d\n", result);
-		fflush(stdout);
-		while (threadCounter != 0)
-			_mm_pause();
-		u64 startTime = ustime();
-		*/
 		c->noReply = 1;
 		for (int i = 0; i < server.work_multiplier; i++) {
 			execBatch(c);
@@ -2208,13 +2205,6 @@ void callCommandAndResetClient(redisClient *c, int thread_id) {
 		c->noReply = 0;
 		// This is the actual call that responds to the client
 		execBatch(c);
-		/*
-		u64 endTime = ustime();
-		fprintf(stdout, "Total operations performed on proc %d (accessing replica %d) is %d, done in %f ms\n", GetCurrentProcessorNumber(), rds->leader[c->currthread].val,
-			5001 * c->bstate.count, (endTime - startTime) / 1000.0);
-		fflush(stdout);
-		ExitThread(1);
-		*/
 	}
 	else {
 		execBatch(c);

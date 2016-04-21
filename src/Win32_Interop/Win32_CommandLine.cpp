@@ -434,7 +434,7 @@ static RedisParamterMapper g_redisArgMap =
 	// RDS related commands 
 	{ cThreads,							&fp1 },    // threads [num-threads]
 	{ cWorkMult,						&fp1 },    // wm [multiplier]
-	{ cNoRepl,							&fp0 },    // norepl
+	{ cRepl,							&fp0 },    // repl
 
 	// RDS experiment-related commands 
 	{ cExpTrials,						&fp1 },    // exp-trials [number] 
