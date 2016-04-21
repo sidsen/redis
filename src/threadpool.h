@@ -34,6 +34,9 @@
 * @brief Threadpool Header file
 */
 
+// Uncomment if global threadcounter needs to be visible elsewhere
+//extern u32 threadCounter;
+
 typedef struct threadpool_t threadpool_t;
 
 typedef enum {

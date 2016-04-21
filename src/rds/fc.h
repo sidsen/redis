@@ -9,7 +9,6 @@ typedef struct FCS FC;
 
 //TODO:FC TEMPORARILY CREATE GLOBAL INSTANCE
 extern FC* fc;
-extern u32 threadCounter_fc;
 extern dict* thread_ids_fc;
 /* Hash type hash table (note that small hashes are represented with ziplists) */
 #ifndef IntDictType

@@ -5,7 +5,6 @@
 
 //TODO:RDS TEMPORARILY CREATE GLOBAL 
 RDS* rds;
-u32 threadCounter = 0;
 dict* thread_ids;
 
 /* Hash type hash table (note that small hashes are represented with ziplists) */

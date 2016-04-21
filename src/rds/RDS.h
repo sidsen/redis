@@ -12,7 +12,6 @@ typedef struct RDSS RDS;
 
 //TODO:RDS TEMPORARILY CREATE GLOBAL INSTANCE
 extern RDS* rds;
-extern u32 threadCounter;
 extern dict* thread_ids;
 /* Hash type hash table (note that small hashes are represented with ziplists) */
 #if not defined(IntDictType)

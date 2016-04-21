@@ -5,7 +5,6 @@
 
 //TODO:FC TEMPORARILY CREATE GLOBAL 
 FC* fc;
-u32 threadCounter_fc = 0;
 dict* thread_ids_fc;
 
 /* Hash type hash table (note that small hashes are represented with ziplists) */

@@ -43,6 +43,8 @@
 #include "tmalloc.h"
 #include "redis.h"
 
+u32 threadCounter = 0;
+
 /**
 *  @struct threadpool_task
 *  @brief the work struct
