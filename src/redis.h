@@ -924,8 +924,8 @@ struct redisServer {
 	RDS* rds;
 	int repl;
 	/* Flat combining (FC) state */
-	FC* fcds;
-	int fc;
+	FC* fc;
+	int flat;
 	/* Experimental flags for RDS */
 	unsigned int exp_trials;
 	unsigned long exp_duration_us;

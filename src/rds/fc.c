@@ -41,7 +41,7 @@ inline u32 FC_incrby_local(FC *fc, int thrid, u32 arg1, u32 arg2) {
 	return zaddGenericCommandLocal(fc->localReg, arg1, arg2, 1);
 }
 
-inline u32 Execute_local(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
+inline u32 Execute_local_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 	switch (op) {
 	case CONTAINS:
 		return FC_contains_local(fc, thrid, arg1, arg2);
@@ -61,8 +61,8 @@ inline u32 Execute_local(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 **                    PRIVATE DS FUNCTIONALITY
 ***********************************************************/
 
-
-inline void DoOp(FC *fc, u32 thrid, u32 op, u32 arg1, u32 arg2) {
+#if 0
+inline void DoOp_fc(FC *fc, u32 thrid, u32 op, u32 arg1, u32 arg2) {
 	switch (op & CYCLE_MASK) {	
 	case INSERT:
 		FC_insert_local(fc, thrid, arg1, arg2);
@@ -85,7 +85,7 @@ inline void DoOp(FC *fc, u32 thrid, u32 op, u32 arg1, u32 arg2) {
 		break;
 	}
 }
-
+#endif
 
 u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 nextOp;
@@ -107,9 +107,9 @@ u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 			// I am the Combiner		
 
 			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {		
-				nextOp = fc->slot[index].op  & CYCLE_MASK;
+				nextOp = fc->slot[index].op & CYCLE_MASK;
 				fc->slot[index].op = EMPTY;
-				fc->slot[index].resp.val = Execute_local(fc, thrid, nextOp, fc->slot[index].arg1, fc->slot[index].arg2);
+				fc->slot[index].resp.val = Execute_local_fc(fc, thrid, nextOp, fc->slot[index].arg1, fc->slot[index].arg2);
 			}
 
 			fc->combinerLock.val = 0;
@@ -133,8 +133,8 @@ u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 	} while (1);
 }
 
-
-inline void NodeReplica_OPTR_Init(NodeReplica_OPTR *nr) {
+#if 0
+inline void NodeReplica_OPTR_Init_fc(NodeReplica_OPTR *nr) {
 	int i;
 	//printf("\n-----------------> NodeReplica_init %d\n", 0);
 	//nr->localReg = (SharedDSType*)malloc(sizeof(SharedDSType));
@@ -146,7 +146,7 @@ inline void NodeReplica_OPTR_Init(NodeReplica_OPTR *nr) {
 	NodeRWLock_Dist_Init(&(nr->lock));
 	for (i = 0; i < NUM_THREADS_PER_NODE; ++i) nr->slot[i].op = EMPTY;
 }
-
+#endif
 
 
 /**********************************************************
@@ -155,6 +155,10 @@ inline void NodeReplica_OPTR_Init(NodeReplica_OPTR *nr) {
 
 
 void FC_Start(FC *fc) {	
+	int i;
+	fc->localReg = createZsetObject();  // sl_set_new_local();
+	fc->combinerLock.val = 0;
+	for (i = 0; i < MAX_THREADS; ++i) fc->slot[i].op = EMPTY;
 }
 
 FC* FC_new() {

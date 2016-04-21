@@ -285,11 +285,11 @@ static void *threadpool_thread(void *threadpool)
 	pinThread(thread_id);
 	_tmreportprocessor(thread_id);
 	/* The last thread is used for measurement and should not be associated with a replica */
-	if ((server.repl || server.fc) && (thread_id != server.threadpool_size - 1)) {
+	if ((server.repl || server.flat) && (thread_id != server.threadpool_size - 1)) {
 		if (server.repl) {
 			RDS_StartThread(rds, thread_id);
 		} 
-		else if (server.fc) {
+		else if (server.flat) {
 			FC_StartThread(fc, thread_id);
 		}
 	}

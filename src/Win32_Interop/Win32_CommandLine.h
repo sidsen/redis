@@ -62,6 +62,7 @@ const string cSentinel = "sentinel";
 const string cThreads = "threads";
 const string cWorkMult = "wm";
 const string cRepl = "repl";
+const string cFC = "fc";
 const string cExpTrials = "exp-trials";
 const string cExpDurationUs = "exp-duration-us";
 const string cExpKeyrange = "exp-keyrange";

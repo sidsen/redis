@@ -1465,8 +1465,8 @@ void initServerConfig(void) {
 	server.work_multiplier = REDIS_DEFAULT_WORK_MULTIPLIER;
 	server.rds = NULL;
 	server.repl = 0;
-	server.fcds = NULL;
-	server.fc = 0;
+	server.fc = NULL;
+	server.flat = 0;
 	server.exp_trials = REDIS_DEFAULT_EXP_TRIALS;
 	server.exp_duration_us = REDIS_DEFAULT_EXP_DURATION_US;
 	server.exp_keyrange = REDIS_DEFAULT_EXP_KEYRANGE;
@@ -1888,7 +1888,7 @@ void initServer(void) {
 	if (server.repl) {
 		rds = RDS_new();
 	}
-	else if (server.fc) {
+	else if (server.flat) {
 		fc = FC_new();
 	}
 

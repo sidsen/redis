@@ -431,10 +431,11 @@ static RedisParamterMapper g_redisArgMap =
     { "latency-monitor-threshold",      &fp1 },    // latency-monitor-threshold [number]
     { cInclude,                         &fp1 },    // include [path]
 
-	// RDS related commands 
+	// RDS/FC related commands 
 	{ cThreads,							&fp1 },    // threads [num-threads]
 	{ cWorkMult,						&fp1 },    // wm [multiplier]
 	{ cRepl,							&fp0 },    // repl
+	{ cFC,								&fp0 },    // fc
 
 	// RDS experiment-related commands 
 	{ cExpTrials,						&fp1 },    // exp-trials [number] 

@@ -547,7 +547,7 @@ void loadServerConfigFromString(char *config) {
 			server.repl = 1;
 		}
 		else if (!strcasecmp(argv[0], "fc")) {
-			server.fc = 1;
+			server.flat = 1;
 		}
 		else if (!strcasecmp(argv[0], "exp-trials")) {
 			server.exp_trials = strtol(argv[1], NULL, 10);
