@@ -91,12 +91,14 @@ u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 nextOp;
 	u32 counter, startInd, finalInd;	
 	u32 index;
-	u32 myIndex = thrid % NUM_THREADS_PER_NODE;
+	u32 myIndex = thrid;
 
 	fc->slot[myIndex].resp.val = MAX_UINT32;
 	fc->slot[myIndex].arg1 = arg1;
 	fc->slot[myIndex].arg2 = arg2;	
 	fc->slot[myIndex].op = op;
+
+	int NUM_RET = MAX_THREADS;
 
 	do {
 
@@ -106,10 +108,13 @@ u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 			&& (CompareSwap32(&(fc->combinerLock.val), 0, 1) == 0)) {
 			// I am the Combiner		
 
-			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {		
-				nextOp = fc->slot[index].op & CYCLE_MASK;
-				fc->slot[index].op = EMPTY;
-				fc->slot[index].resp.val = Execute_local_fc(fc, thrid, nextOp, fc->slot[index].arg1, fc->slot[index].arg2);
+			for (int retries = 0; retries < NUM_RET; ++retries) {
+
+				for (u32 index = 0; (index < MAX_THREADS); ++index) {
+					nextOp = fc->slot[index].op & CYCLE_MASK;
+					fc->slot[index].op = EMPTY;
+					fc->slot[index].resp.val = Execute_local_fc(fc, thrid, nextOp, fc->slot[index].arg1, fc->slot[index].arg2);
+				}
 			}
 
 			fc->combinerLock.val = 0;
@@ -159,6 +164,7 @@ void FC_Start(FC *fc) {
 	fc->localReg = createZsetObject();  // sl_set_new_local();
 	fc->combinerLock.val = 0;
 	for (i = 0; i < MAX_THREADS; ++i) fc->slot[i].op = EMPTY;
+	//maxFCThreads = 0;
 }
 
 FC* FC_new() {
@@ -171,6 +177,7 @@ FC* FC_new() {
 
 void FC_StartThread(FC *fc, int thrid) {
 	dictAdd(thread_ids_fc, GetCurrentThreadId(), thrid);
+	//FetchAndAdd32(&maxFCThreads, 1);
 }
 
 u32 FC_contains(FC *fc, int thrid, u32 arg1, u32 arg2) {	
