@@ -111,9 +111,11 @@ u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 			for (int retries = 0; retries < NUM_RET; ++retries) {
 
 				for (u32 index = 0; (index < MAX_THREADS); ++index) {
-					nextOp = fc->slot[index].op & CYCLE_MASK;
-					fc->slot[index].op = EMPTY;
-					fc->slot[index].resp.val = Execute_local_fc(fc, thrid, nextOp, fc->slot[index].arg1, fc->slot[index].arg2);
+					if (fc->slot[index].op != EMPTY) {
+						nextOp = fc->slot[index].op;
+						fc->slot[index].op = EMPTY;
+						fc->slot[index].resp.val = Execute_local_fc(fc, thrid, nextOp, fc->slot[index].arg1, fc->slot[index].arg2);
+					}
 				}
 			}
 
