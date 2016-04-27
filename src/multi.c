@@ -374,8 +374,8 @@ __declspec(thread) struct multiCmd writeCmd = { 0 };
 u32* totalOps = NULL;
 volatile u16 trials = 0;
 /* Counters used to synchronize threads between alternating trials */
-u32 ready1 = 0;
-u32 ready2 = 0;
+volatile u32 ready1 = 0;
+volatile u32 ready2 = 0;
 
 void execBatch(redisClient *c) {
 	int j;
@@ -406,7 +406,7 @@ void execBatch(redisClient *c) {
 		if (readCmd.cmd != 0 && writeCmd.cmd != 0)
 		{
 			float readRatios[] = { 0.0, 0.8, 0.9, 0.98, 1.0 };
-			volatile u32* activeReady = &ready1;
+			volatile u32* volatile activeReady = &ready1;
 
 			for (int expCnt = 0; expCnt < sizeof(readRatios) / sizeof(float); expCnt++)
 			{
