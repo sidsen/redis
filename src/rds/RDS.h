@@ -39,6 +39,7 @@ struct NodeReplica_OPTRS {
 	u32 localBit;
 	u32 startId;
 	u32 endId;
+	// Per replica thread count
 	u32 threadCnt;
 	char pad_[CACHE_LINE - 4 * sizeof(u32)-sizeof(SharedDSType*)];
 	PaddedVolatileUInt combinerLock;	
@@ -64,6 +65,8 @@ typedef union PaddedNodeReplicaPtr_OPTRU      PaddedNodeReplicaPtr_OPTR;
 // If it can't acquire the lock, or if it can't read, then the thread tries to combine. 
 // Register_NR3_OPTR {
 struct RDSS {
+	// Global thread count
+	u32 threadCnt;
 	SharedLog sharedLog;
 	PaddedNodeReplicaPtr_OPTR local[MAX_THREADS];
 	PaddedUInt leader[MAX_THREADS];

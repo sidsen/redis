@@ -135,6 +135,20 @@ threadpool_t *threadpool_create(int thread_count, int queue_size, int flags)
 			pool->started++;
 		}
 	}
+	
+	/* For RDS, set the per-replica thread count *after* all threads have registered
+	(that way we know the replicas have been allocated by the leaders) */
+	if (server.repl) {
+		// Recall one thread is used for measurement only so will be unregistered
+		while (rds->threadCnt != server.threadpool_size - 1)
+			;
+		RDS_SetReplicaThreadCounts(rds);
+	}
+	else if (server.flat) {
+		// Recall one thread is used for measurement only so will be unregistered
+		while (fc->threadCnt != server.threadpool_size - 1)
+			;
+	}
 
 	return pool;
 
@@ -282,7 +296,7 @@ static void *threadpool_thread(void *threadpool)
 	u32 thread_id = AtomicInc32(&threadCounter) - 1;
 
 	/* Pin the thread */
-	pinThread(thread_id);
+	pinThread(thread_id % MAX_THREADS);
 	_tmreportprocessor(thread_id);
 	/* The last thread is used for measurement and should not be associated with a replica */
 	if ((server.repl || server.flat) && (thread_id != server.threadpool_size - 1)) {

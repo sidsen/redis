@@ -678,6 +678,7 @@ int RDS_size(RDS *rds) {
 void RDS_Start(RDS *rds) {
 	int i;
 	//printf("\n-----------------> START %d\n", 0);
+	rds->threadCnt = 0;
 	SharedLog_Init(&(rds->sharedLog));
 	for (i = 0; i < MAX_THREADS; ++i) rds->local[i].replica = NULL;
 }
@@ -700,8 +701,8 @@ void IntraSocket(RDS *rds, int thrid) {
 		NodeReplica_OPTR_Init(rds->local[thrid].replica);
 		//printf("create thrid %d leader %d\n", thrid, leaderT);
 	}
-	// Keep track of the number of threads assigned to this replica
-	AtomicInc32(&rds->local[leaderT].replica->threadCnt);
+	// Keep track of the total number of threads registered
+	AtomicInc32(&rds->threadCnt);
 	//printf("thrid %d leader %d\n", thrid, leaderT);
 }
 
@@ -710,6 +711,14 @@ void RDS_StartThread(RDS *rds, int thrid) {
 	//printf("\n-----------------> START_THR %d\n", thrid);
 	dictAdd(thread_ids, GetCurrentThreadId(), thrid);
 	IntraSocket(rds, thrid);
+}
+
+// This should be called *after* all threads have registered with RDS. It assumes thread
+// ids are assigned contiguously starting from 0. This method is not thread safe.
+void RDS_SetReplicaThreadCounts(RDS *rds) {
+	for (int i = 0; i < rds->threadCnt; i++) {
+		rds->local[rds->leader[i].val].replica->threadCnt++;
+	}
 }
 
 u32 RDS_contains(RDS *rds, int thrid, u32 arg1, u32 arg2) {
