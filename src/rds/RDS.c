@@ -530,7 +530,7 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 			int howMany = 0;
 			u32 index;
-			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {
+			for (index = 0; (index < rds->local[rds->leader[thrid].val].replica->threadCnt); ++index) {
 				if (rds->local[rds->leader[thrid].val].replica->slot[index].op != EMPTY) {
 					if (rds->local[rds->leader[thrid].val].replica->slot[index].op != CONTAINS) {
 						++howMany;
@@ -548,7 +548,7 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 
 
-				for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {
+				for (index = 0; (index < rds->local[rds->leader[thrid].val].replica->threadCnt); ++index) {
 					if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
 						nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
 						if (nextOp != CONTAINS) {
@@ -579,7 +579,7 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			if (rds->local[rds->leader[thrid].val].replica->localTail < startInd) rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
 
 
-			for (index = 0; (index < NUM_THREADS_PER_NODE); ++index) {
+			for (index = 0; (index < rds->local[rds->leader[thrid].val].replica->threadCnt); ++index) {
 
 				if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
 
@@ -653,6 +653,7 @@ inline void NodeReplica_OPTR_Init(NodeReplica_OPTR *nr) {
 	nr->localBit = 1;
 	nr->combinerLock.val = 0;
 	nr->startId = nr->endId = 0;
+	nr->threadCnt = 0;
 	NodeRWLock_Dist_Init(&(nr->lock));
 	for (i = 0; i < NUM_THREADS_PER_NODE; ++i) nr->slot[i].op = EMPTY;
 }
@@ -699,6 +700,8 @@ void IntraSocket(RDS *rds, int thrid) {
 		NodeReplica_OPTR_Init(rds->local[thrid].replica);
 		//printf("create thrid %d leader %d\n", thrid, leaderT);
 	}
+	// Keep track of the number of threads assigned to this replica
+	AtomicInc32(&rds->local[leaderT].replica->threadCnt);
 	//printf("thrid %d leader %d\n", thrid, leaderT);
 }
 

@@ -104,7 +104,7 @@ u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 	fc->slot[myIndex].arg2 = arg2;	
 	fc->slot[myIndex].op = op;
 
-	int NUM_RET = MAX_THREADS;
+	int NUM_RET = fc->threadCnt;
 
 	do {
 
@@ -116,7 +116,7 @@ u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 			for (int retries = 0; retries < NUM_RET; ++retries) {
 
-				for (u32 index = 0; (index < MAX_THREADS); ++index) {
+				for (u32 index = 0; (index < fc->threadCnt); ++index) {
 					if (fc->slot[index].op != EMPTY) {
 						nextOp = fc->slot[index].op;
 						fc->slot[index].op = EMPTY;
@@ -171,8 +171,8 @@ void FC_Start(FC *fc) {
 	int i;
 	fc->localReg = createZsetObject();  // sl_set_new_local();
 	fc->combinerLock.val = 0;
+	fc->threadCnt = 0;
 	for (i = 0; i < MAX_THREADS; ++i) fc->slot[i].op = EMPTY;
-	//maxFCThreads = 0;
 }
 
 FC* FC_new() {
@@ -185,6 +185,7 @@ FC* FC_new() {
 
 void FC_StartThread(FC *fc, int thrid) {
 	dictAdd(thread_ids_fc, GetCurrentThreadId(), thrid);
+	AtomicInc32(&fc->threadCnt);
 	//FetchAndAdd32(&maxFCThreads, 1);
 }
 

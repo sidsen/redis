@@ -39,6 +39,7 @@ struct NodeReplica_OPTRS {
 	u32 localBit;
 	u32 startId;
 	u32 endId;
+	u32 threadCnt;
 	char pad_[CACHE_LINE - 4 * sizeof(u32)-sizeof(SharedDSType*)];
 	PaddedVolatileUInt combinerLock;	
 	NodeRWLock_Dist lock;

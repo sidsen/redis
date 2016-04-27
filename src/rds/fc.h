@@ -29,6 +29,7 @@ extern dictType IntDictType;
 struct FCS {	
 	SharedDSType *localReg;
 	char pad_[CACHE_LINE - sizeof(SharedDSType*)];
+	u32 threadCnt;
 	PaddedVolatileUInt combinerLock;
 	PaddedSlot slot[MAX_THREADS];
 } CACHE_ALIGN;
