@@ -138,6 +138,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "NewFolder1", "NewFolder1", 
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mlib", "..\deps\mlib\mlib.vcxproj", "{D2B4EADE-A5B5-472F-BD18-470B187BBECC}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{4F5E958F-366F-4C69-B9FE-A46F2A91DF6E}"
+	ProjectSection(SolutionItems) = preProject
+		setups\rds-experiments.txt = setups\rds-experiments.txt
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32

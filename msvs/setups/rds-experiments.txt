@@ -1,0 +1,13 @@
+Server command (run from ... \redis\msvs\x64\Release):
+
+.\redis-server.exe --maxheap 200mb --wm 1 --exp-trials 1 --exp-duration-us 1000000 --threads 48
+
+Client command (run from ... \redis\msvs\x64\Release):
+
+.\redis-benchmark.exe -t zadd -c 100 -P 100 -n 200000 -r 10000 -q ; .\redis-benchmark.exe -t zmixed -c 150 -P 1 -n 2000 -r 10000 -f 50 -q
+
+
+
+
+
+
