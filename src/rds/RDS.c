@@ -719,6 +719,12 @@ void RDS_SetReplicaThreadCounts(RDS *rds) {
 	for (int i = 0; i < rds->threadCnt; i++) {
 		rds->local[rds->leader[i].val].replica->threadCnt++;
 	}
+	/* Check per-replica thread counts 
+	for (int i = 0; i < rds->threadCnt; i += NUM_THREADS_PER_NODE) {
+		fprintf(stdout, "Replica %d has count %d", i, rds->local[i].replica->threadCnt);
+		fflush(stdout);
+	}
+	*/
 }
 
 u32 RDS_contains(RDS *rds, int thrid, u32 arg1, u32 arg2) {

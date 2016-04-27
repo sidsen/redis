@@ -65,8 +65,8 @@ typedef union PaddedNodeReplicaPtr_OPTRU      PaddedNodeReplicaPtr_OPTR;
 // If it can't acquire the lock, or if it can't read, then the thread tries to combine. 
 // Register_NR3_OPTR {
 struct RDSS {
-	// Global thread count
-	u32 threadCnt;
+	// Global thread count (note: volatile seems essential)
+	volatile u32 threadCnt;
 	SharedLog sharedLog;
 	PaddedNodeReplicaPtr_OPTR local[MAX_THREADS];
 	PaddedUInt leader[MAX_THREADS];
@@ -77,6 +77,7 @@ RDS* RDS_new();
 //TODO:SID NOT NEEDED?
 //int RDS_size(RDS *rds);
 void RDS_StartThread(RDS *rds, int thrid);
+void RDS_SetReplicaThreadCounts(RDS *rds);
 u32 RDS_contains(RDS *rds, int thrid, u32 arg1, u32 arg2);
 u32 RDS_insert(RDS *rds, int thrid, u32 arg1, u32 arg2);
 u32 RDS_incrby(RDS *rds, int thrid, u32 arg1, u32 arg2);
