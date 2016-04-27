@@ -63,7 +63,16 @@ zskiplistNode *zslCreateNode(int level, double score, robj *obj) {
     zskiplistNode *zn = zmalloc(sizeof(*zn)+level*sizeof(struct zskiplistLevel));
     zn->score = score;
     zn->obj = obj;
+	zn->levelnum = level;
     return zn;
+}
+
+zskiplistNode *zslCreateNodeNoalloc(int level, double score, robj *obj, zskiplistNode *zn) {
+	//zskiplistNode *zn = zmalloc(sizeof(*zn) + level*sizeof(struct zskiplistLevel));
+	zn->score = score;
+	zn->obj = obj;
+	zn->levelnum = level;
+	return zn;
 }
 
 zskiplist *zslCreate(void) {
@@ -167,6 +176,63 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
     return x;
 }
 
+zskiplistNode *zslInsertNoalloc(zskiplist *zsl, double score, robj *obj, zskiplistNode* node) {
+	zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
+	unsigned int rank[ZSKIPLIST_MAXLEVEL];
+	int i, level;
+
+	redisAssert(!isnan(score));
+	x = zsl->header;
+	for (i = zsl->level - 1; i >= 0; i--) {
+		/* store rank that is crossed to reach the insert position */
+		rank[i] = i == (zsl->level - 1) ? 0 : rank[i + 1];
+		while (x->level[i].forward &&
+			(x->level[i].forward->score < score ||
+			(x->level[i].forward->score == score &&
+			compareStringObjects(x->level[i].forward->obj, obj) < 0))) {
+			rank[i] += x->level[i].span;
+			x = x->level[i].forward;
+		}
+		update[i] = x;
+	}
+	/* we assume the key is not already inside, since we allow duplicated
+	* scores, and the re-insertion of score and redis object should never
+	* happen since the caller of zslInsert() should test in the hash table
+	* if the element is already inside or not. */
+	level = node->levelnum; // zslRandomLevel();
+	if (level > zsl->level) {
+		for (i = zsl->level; i < level; i++) {
+			rank[i] = 0;
+			update[i] = zsl->header;
+			update[i]->level[i].span = zsl->length;
+		}
+		zsl->level = level;
+	}
+	x = zslCreateNode(level, score, obj, node);
+	for (i = 0; i < level; i++) {
+		x->level[i].forward = update[i]->level[i].forward;
+		update[i]->level[i].forward = x;
+
+		/* update span covered by update[i] as x is inserted here */
+		x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);
+		update[i]->level[i].span = (rank[0] - rank[i]) + 1;
+	}
+
+	/* increment span for untouched levels */
+	for (i = level; i < zsl->level; i++) {
+		update[i]->level[i].span++;
+	}
+
+	x->backward = (update[0] == zsl->header) ? NULL : update[0];
+	if (x->level[0].forward)
+		x->level[0].forward->backward = x;
+	else
+		zsl->tail = x;
+	zsl->length++;
+	return x;
+}
+
+
 /* Internal function used by zslDelete, zslDeleteByScore and zslDeleteByRank */
 void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update) {
     int i;
@@ -211,6 +277,31 @@ int zslDelete(zskiplist *zsl, double score, robj *obj) {
         return 1;
     }
     return 0; /* not found */
+}
+
+/* Delete an element with matching score/object from the skiplist. */
+zskiplistNode* zslDeleteNofree(zskiplist *zsl, double score, robj *obj) {
+	zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
+	int i;
+
+	x = zsl->header;
+	for (i = zsl->level - 1; i >= 0; i--) {
+		while (x->level[i].forward &&
+			(x->level[i].forward->score < score ||
+			(x->level[i].forward->score == score &&
+			compareStringObjects(x->level[i].forward->obj, obj) < 0)))
+			x = x->level[i].forward;
+		update[i] = x;
+	}
+	/* We may have multiple elements with the same score, what we need
+	* is to find the element with both the right score and object. */
+	x = x->level[0].forward;
+	if (x && score == x->score && equalStringObjects(x->obj, obj)) {
+		zslDeleteNode(zsl, x, update);
+		//zslFreeNode(x);
+		return x;
+	}
+	return NULL; /* not found */
 }
 
 static int zslValueGteMin(double value, zrangespec *spec) {
@@ -1246,7 +1337,7 @@ void zaddGenericCommand(redisClient *c, int incr) {
                         addReplyError(c,nanerr);
                         goto cleanup;
                     }
-                }
+                }	
 
                 /* Remove and re-insert when score changed. */
                 if (score != curscore) {
@@ -1428,7 +1519,9 @@ int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 		* dictionary still has a reference to it. */
 		if (score != curscore) {
 			redisAssertWithInfo(NULL, curobj, zslDelete(zs->zsl, curscore, curobj));
+			//znode = zslDeleteNofree(zs->zsl, curscore, curobj);
 			znode = zslInsert(zs->zsl, score, curobj);
+			//znode = zslInsertNoalloc(zs->zsl, score, curobj, znode);
 			incrRefCount(curobj); /* Re-inserted in skiplist. */
 			dictGetVal(de) = &znode->score; /* Update score ptr. */
 			//server.dirty++;

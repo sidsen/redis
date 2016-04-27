@@ -39,6 +39,12 @@ inline u32 FC_remove_local(FC *fc, int thrid, u32 arg1, u32 arg2) {
 
 inline u32 FC_incrby_local(FC *fc, int thrid, u32 arg1, u32 arg2) {	
 	return zaddGenericCommandLocal(fc->localReg, arg1, arg2, 1);
+	/*
+	for (int i = 0; i < 500; i++) {
+		_mm_pause();
+	}
+	return 1;
+	*/
 }
 
 inline u32 Execute_local_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {

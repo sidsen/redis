@@ -405,72 +405,97 @@ void execBatch(redisClient *c) {
 		}
 		if (readCmd.cmd != 0 && writeCmd.cmd != 0)
 		{
-			/* Initialize the array for storing results */
-			if ((c->currthread == server.threadpool_size - 1) && (totalOps == NULL)) {
-				totalOps = zmalloc(server.threadpool_size * sizeof(u32));
-				memset(totalOps, 0, server.threadpool_size * sizeof(u32));
-			}
-
+			float readRatios[] = { 0.0, 0.8, 0.9, 0.98, 1.0 };
 			volatile u32* activeReady = &ready1;
-			float readRatio = server.exp_read_ratio;
-			/* Run the experiment exp-trials times */
-			do {
-				AtomicInc32(activeReady);
-				while (*activeReady != server.threadpool_size) {
-					;
+
+			for (int expCnt = 0; expCnt < sizeof(readRatios) / sizeof(float); expCnt++)
+			{
+				if (c->currthread == server.threadpool_size - 1) {
+					server.exp_read_ratio = readRatios[expCnt];
+					totalOps = NULL;
+					trials = 0;
 				}
-				/* Use the extra trial round to synchronize the end of the experiment */
-				if (trials == server.exp_trials) {
-					break;
+
+				/* Initialize the array for storing results */
+				if ((c->currthread == server.threadpool_size - 1) && (totalOps == NULL)) {
+					totalOps = zmalloc(server.threadpool_size * sizeof(u32));
+					memset(totalOps, 0, server.threadpool_size * sizeof(u32));
 				}
-				if (c->currthread == (server.threadpool_size - 1)) {
-					usleep(server.exp_duration_us);
-					trials++;
-					/* Indicates to all threads that the experiment is over */
-					*activeReady = 0;
-				}
-				else {
-					u32 i;
-					fprintf(stdout, "Starting operations on thread %d time is %d\n", c->currthread, server.exp_duration_us);
-					for (i = 0; *activeReady != 0; i++)
-					{
-						if (randLFSR() <= readRatio * USHRT_MAX)
-						{
-							c->argc = readCmd.argc;
-							c->argv = readCmd.argv;
-							c->cmd = readCmd.cmd;
-						}
-						else
-						{
-							c->argc = writeCmd.argc;
-							c->argv = writeCmd.argv;
-							c->cmd = writeCmd.cmd;
-						}
-						call(c, REDIS_CALL_FULL);
+
+				//activeReady = &ready1;
+				float readRatio = server.exp_read_ratio;
+				/* Run the experiment exp-trials times */
+				do {
+					AtomicInc32(activeReady);
+					while (*activeReady != server.threadpool_size) {
+						;
 					}
-					totalOps[c->currthread] += i;
-					fprintf(stdout, "Total operations performed is %10d\n", i);
+	
+					/* Use the extra trial round to synchronize the end of the experiment */
+					if (trials == server.exp_trials) {
+						if (c->currthread == server.threadpool_size - 1) {
+							usleep(1000);
+							*activeReady = 0;
+						}
+						else {
+							for (int j = 0; *activeReady != 0; j++)
+								;
+						}
+						/* Switch to the other synchronization variable for the next experiment */
+						activeReady = (activeReady == &ready1) ? &ready2 : &ready1;
+						break;
+					}
+
+					if (c->currthread == (server.threadpool_size - 1)) {
+						usleep(server.exp_duration_us);
+						trials++;
+						/* Indicates to all threads that the experiment is over */
+						*activeReady = 0;
+					}
+					else {
+						u32 i;
+						//fprintf(stdout, "Starting operations on thread %d time is %d\n", c->currthread, server.exp_duration_us);
+						for (i = 0; *activeReady != 0; i++)
+						{
+							if (randLFSR() <= readRatio * USHRT_MAX)
+							{
+								c->argc = readCmd.argc;
+								c->argv = readCmd.argv;
+								c->cmd = readCmd.cmd;
+							}
+							else
+							{
+								c->argc = writeCmd.argc;
+								c->argv = writeCmd.argv;
+								c->cmd = writeCmd.cmd;
+							}
+							call(c, REDIS_CALL_FULL);
+						}
+						totalOps[c->currthread] += i;
+						//fprintf(stdout, "Total operations performed is %10d\n", i);
+						//fflush(stdout);
+					}
+					/* Switch to the other synchronization variable for the next trial */
+					activeReady = (activeReady == &ready1) ? &ready2 : &ready1;
+				} while (trials <= server.exp_trials);  /* Enter loop once more than necessary to synchronize at end */
+
+				/* Print the final results and exit redis */
+				if (c->currthread == server.threadpool_size - 1) {
+					u64 sumOps = 0;
+					for (int j = 0; j < server.threadpool_size - 1; j++) {
+						sumOps += totalOps[j];
+					}
+					fprintf(stdout, "Experiment results (threads = %d, trials = %d, duration = %d, keyrange = %d, read ratio = %f): %10f ops/sec\n",
+						server.threadpool_size - 1, server.exp_trials, server.exp_duration_us, server.exp_keyrange, server.exp_read_ratio, sumOps / (server.exp_trials * (server.exp_duration_us / 1000000.0)));
 					fflush(stdout);
 				}
-				/* Switch to the other synchronization variable for the next trial */
-				activeReady = (activeReady == &ready1) ? &ready2 : &ready1;
-			} while (trials <= server.exp_trials);  /* Enter loop once more than necessary to synchronize at end */
-
-			/* Print the final results and exit redis */
-			if (c->currthread == server.threadpool_size - 1) {
-				u64 sumOps = 0;
-				for (int j = 0; j < server.threadpool_size - 1; j++) {
-					sumOps += totalOps[j];
-				}
-				fprintf(stdout, "Experiment results (trials = %d, duration = %d, keyrange = %d, read ratio = %f): %10f ops/sec\n",
-					server.exp_trials, server.exp_duration_us, server.exp_keyrange, server.exp_read_ratio, sumOps / (server.exp_trials * (server.exp_duration_us / 1000000.0)));
-				fflush(stdout);
 			}
 
 			/* Mimic end below */
 			c->argv = orig_argv;
 			c->argc = orig_argc;
 			c->cmd = orig_cmd;
+
 			/* Exit redis to end the experiment */
 			exit(0);
 		}

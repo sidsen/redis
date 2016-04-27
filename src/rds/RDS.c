@@ -41,6 +41,12 @@ inline u32 RDS_remove_local(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 inline u32 RDS_incrby_local(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 	//printf("\n-----------------> sl_add_local %d\n", 0);
 	return zaddGenericCommandLocal((rds->local[rds->leader[thrid].val].replica->localReg), arg1, arg2, 1);
+	/*
+	for (int i = 1; i < 500; i++) {
+		_mm_pause();
+	}
+	return 1;
+	*/
 }
 
 inline u32 Execute_local(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
@@ -603,7 +609,7 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			if (rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val != MAX_UINT32) {
 				return rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val;
 			}
-		}			
+		}
 			
 	} while (1);
 }

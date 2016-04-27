@@ -418,7 +418,7 @@ typedef long long mstime_t; /* millisecond time type. */
 
 /* Experiment defaults */
 #define REDIS_DEFAULT_EXP_TRIALS 5
-#define REDIS_DEFAULT_EXP_DURATION_US 2000000
+#define REDIS_DEFAULT_EXP_DURATION_US 1000000
 #define REDIS_DEFAULT_EXP_READ_RATIO 0.0
 #define REDIS_DEFAULT_EXP_KEYRANGE 10000
 
@@ -605,6 +605,7 @@ typedef struct zskiplistNode {
     robj *obj;
     double score;
     struct zskiplistNode *backward;
+	u16 levelnum;
     struct zskiplistLevel {
         struct zskiplistNode *forward;
         unsigned int span;
