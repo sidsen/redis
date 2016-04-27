@@ -42,8 +42,8 @@ otherwise memory is allocated from the node local to each processor */
 #endif
 
 /* pick machine */
-#define MACHINE_RAMA
-//#define MACHINE_VRG
+//#define MACHINE_RAMA
+#define MACHINE_VRG
 
 
 /**********************************************
@@ -138,7 +138,7 @@ static int coresInNodeAll[] = {
 #define NUM_THR_NODE    NUM_THREADS_PER_NODE
 
 
-#define MAX_THREADS    128	
+#define MAX_THREADS    112	
 //#if MAX_THREADS < (NUM_NODES * NUM_THREADS_PER_NODE)
 //	#error "MAX_THREADS is invalid (must be bigger than NUM_NODES * NUM_THREADS_PER_NODE)"
 //#endif

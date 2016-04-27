@@ -532,7 +532,7 @@ void *_tmlargemalloc(size_t size){
 
 void *_tmallocnuma(size_t size){
   void *retval;
-  unsigned char uchar_numanode;
+  unsigned short ushort_numanode;
   u32 numanode;
   int res;
   int processor;
@@ -545,11 +545,26 @@ void *_tmallocnuma(size_t size){
 	processor = 0;
   }
   else processor = _TMthreadinfo->myprocessor;
-  res = GetNumaProcessorNode(processor, &uchar_numanode);
+
+
+
+
+  int bigproc = processor % GetActiveProcessorCount(0);
+  int group = processor / GetActiveProcessorCount(0);
+
+  PROCESSOR_NUMBER pn;
+  ZeroMemory(&pn, sizeof(PROCESSOR_NUMBER));
+  pn.Group = group;
+  pn.Number = bigproc;
+
+  res = GetNumaProcessorNodeEx(&pn, &ushort_numanode);
+  //printf("GetNumaProcessorNodeEx: proc %d relativeProc %d group %d res %d node %u size %d \n", processor, bigproc, group, res, ushort_numanode, size);
+
   if (res == 0){
-    printf("Error in GetNumaProcessorNode: %d\n", GetLastError());
-    numanode = 0;
-  } else numanode = uchar_numanode;
+	  printf("Error in GetNumaProcessorNodeEx: %d\n", GetLastError());
+	  numanode = 0;
+  }
+  else numanode = ushort_numanode;
   if (size==0) size=1;
   size = (size + _TM_PAGESIZE - 1) / _TM_PAGESIZE * _TM_PAGESIZE; // round up to next LargePageSize
   retval = VirtualAllocExNuma(GetCurrentProcess(), 0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE, numanode);
