@@ -94,7 +94,8 @@ inline void DoOp(RDS *rds, u32 thrid, u32 op, u32 arg1, u32 arg2) {
 	}
 }
 
-
+#if 0
+// Updated for NR6
 inline bool Between(RDS *rds, u32 min, u32 start, u32 howMany) {
 	u32 end = ADDN(start, howMany);
 	if (start < end) {
@@ -105,9 +106,12 @@ inline bool Between(RDS *rds, u32 min, u32 start, u32 howMany) {
 		return ((start <= min) || (min < end));
 	}
 }
+#endif
 
 
 void UpdateMin(RDS *rds, int thrid, u32 currentTail, u32 howMany) {
+#if 0
+	// Updated for NR6
 	u32 logMin, p;
 	u32 auxTail;
 	logMin = rds->sharedLog.logMin.val;
@@ -134,6 +138,31 @@ void UpdateMin(RDS *rds, int thrid, u32 currentTail, u32 howMany) {
 		logMin = rds->sharedLog.logMin.val;
 		p = (logMin + _logSize - NUM_THREADS_PER_NODE - 1) & (_logSize - 1);
 	}
+#endif 
+
+	u32 logMin, p;
+	u32 auxTail;
+	logMin = rds->sharedLog.logMin.val;
+	p = (logMin - NUM_THREADS_PER_NODE - 1);
+
+	while (p >= currentTail && p < currentTail + howMany) {
+		//update logMin if possible
+		int i;
+		u32 min = MAX_LOG_SIZE;
+		
+		for (i = 0; i < MAX_THREADS; ++i) {
+			if (rds->local[i].replica) {
+				auxTail = rds->local[i].replica->localTail;
+				if (auxTail < min) min = auxTail;				
+			}
+		}
+		rds->sharedLog.logMin.val = min + _logSize;
+		
+		logMin = rds->sharedLog.logMin.val;
+		p = (logMin - NUM_THREADS_PER_NODE - 1);
+	}
+
+
 }
 
 inline void UpdateFromLog(RDS *rds, int thrid, u32 to);
@@ -141,7 +170,8 @@ inline void UpdateFromLog(RDS *rds, int thrid, u32 to);
 u32 AppendAndUpdate(RDS *rds, int thrid, u32 howMany) {
 	u32 currentTail, to;
 
-
+#if 0
+	// UPdated for NR6
 	if (howMany > 0) {
 		do {
 			currentTail = SharedLog_GetNextTail(&(rds->sharedLog), howMany);
@@ -157,9 +187,63 @@ u32 AppendAndUpdate(RDS *rds, int thrid, u32 howMany) {
 	}
 
 	return currentTail;
+#endif 
+
+
+	if (howMany > 0) {
+		do {
+			currentTail = SharedLog_GetNextTail(&(rds->sharedLog), howMany);
+			if (currentTail == MAX_LOG_SIZE) {
+				to = rds->sharedLog.logTail.val;
+				if (to != rds->local[rds->leader[thrid].val].replica->localTail) {
+					// lock
+					NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
+					UpdateFromLog(rds, thrid, LOGTAIL_UNMARKED(to));
+					rds->local[rds->leader[thrid].val].replica->localTail = to;
+					// unlock
+					NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
+				}
+			}
+		} while (currentTail == MAX_LOG_SIZE);
+	}
+	else {
+		currentTail = rds->sharedLog.logTail.val;
+	}
+
+	return currentTail;
 
 }
 
+
+inline void waitAndExecuteOne(RDS *rds, int thrid, u32 from, u32 to) {
+	u32 expb, index;
+
+	for (index = from; index < to; ++index) {		
+		while (((rds->sharedLog.log[index].op >> CYCLE_BITS) ^ rds->local[rds->leader[thrid].val].replica->localBit) != 0) {
+			_mm_pause();
+		}
+		DoOp(rds, thrid, rds->sharedLog.log[index].op, rds->sharedLog.log[index].arg1, rds->sharedLog.log[index].arg2);
+	}
+
+}
+
+inline void UpdateFromLog(RDS *rds, int thrid, u32 to) {
+	
+	if (LOGTAIL_UNMARKED(rds->local[rds->leader[thrid].val].replica->localTail) <= to) {
+		waitAndExecuteOne(rds, thrid, LOGTAIL_UNMARKED(rds->local[rds->leader[thrid].val].replica->localTail), to);
+	}
+	else {
+		
+		waitAndExecuteOne(rds, thrid, LOGTAIL_UNMARKED(rds->local[rds->leader[thrid].val].replica->localTail), _logSize);
+
+		rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
+
+		waitAndExecuteOne(rds, thrid, 0, to);
+	}
+}
+
+#if 0
+// Updated for NR6
 inline void UpdateFromLog(RDS *rds, int thrid, u32 to) {
 	u32 expb, index;
 	if (rds->local[rds->leader[thrid].val].replica->localTail <= to) {
@@ -191,8 +275,27 @@ inline void UpdateFromLog(RDS *rds, int thrid, u32 to) {
 		}
 	}
 }
+#endif
 
 
+inline u32 UpdateFromLogForReads(RDS *rds, int thrid, u32 to) {
+	u32 index;
+
+	for (index = rds->local[rds->leader[thrid].val].replica->localTail; index < to; ++index) {
+		u32 unmkind = LOGTAIL_UNMARKED(index);
+		if (((rds->sharedLog.log[index].op >> CYCLE_BITS) ^ rds->local[rds->leader[thrid].val].replica->localBit) != 0) {
+			return index;
+		}
+		DoOp(rds, thrid, rds->sharedLog.log[index].op, rds->sharedLog.log[index].arg1, rds->sharedLog.log[index].arg2);
+		if (unmkind == (_logSize - 1)) 
+			rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
+	}
+
+	return to;
+}
+
+#if 0
+// UPdated for NR6
 inline u32 UpdateFromLogForReads(RDS *rds, int thrid, u32 to) {
 	u32 index;
 	u32 node = (thrid / NUM_THREADS_PER_NODE) << OP_BITS;
@@ -224,6 +327,7 @@ inline u32 UpdateFromLogForReads(RDS *rds, int thrid, u32 to) {
 
 	return to;
 }
+#endif
 
 
 //TODO:PERF FOR TESTING RDS PERF
@@ -471,6 +575,8 @@ u32 Combine_incrby(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 }
 #endif
 
+#if 0
+// UPdated for NR6
 inline bool BetweenLocalAndTail(RDS *rds, u32 readTail, u32 localTail, u32 tail) {	
 	if (localTail <= tail) {
 		return ((localTail < readTail) && (readTail <= tail));
@@ -479,7 +585,10 @@ inline bool BetweenLocalAndTail(RDS *rds, u32 readTail, u32 localTail, u32 tail)
 		return ((localTail < readTail) || (readTail <= tail));
 	}
 }
+#endif
 
+#if 0
+// Updated for NR6
 static const u32 COMBINER_HOLD_TIME_MS = 5;
 //IRINA: Is this sufficient, or does the timer need to be volatile as well?
 volatile bool combinerHold = false;
@@ -613,8 +722,174 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 			
 	} while (1);
 }
+#endif
 
 
+u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
+	u32 nextOp, oldVal;
+	u32 counter, startInd, finalInd;
+	u32 myIndex = thrid % NUM_THREADS_PER_NODE;
+
+	int howMany = 0;
+	u32 maxNodeIndex = rds->local[rds->leader[thrid].val].replica->threadCnt;
+
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val = MAX_UINT32;
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg1 = arg1;
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg2 = arg2;
+	rds->local[rds->leader[thrid].val].replica->slot[myIndex].op = op;
+
+	do {
+	
+
+		if ((rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0)
+			&& (rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0)
+			&& (rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0)
+		&& 
+			(CompareSwap32(&(rds->local[rds->leader[thrid].val].replica->combinerLock.val), 0, 1) == 0)) {
+
+			// I am the Combiner			
+
+			//int howMany = 0;
+			u32 index;
+			for (index = 0; (index < maxNodeIndex); ++index) {
+				if (rds->local[rds->leader[thrid].val].replica->slot[index].op != EMPTY) {					
+					++howMany;					
+					rds->local[rds->leader[thrid].val].replica->slot[index].op |= (1 << CYCLE_BITS);
+				}
+			}
+
+			
+
+			if (howMany > 0) {
+				startInd = AppendAndUpdate(rds, thrid, howMany);
+				counter = LOGTAIL_UNMARKED(startInd);
+				finalInd = LOGTAIL_NEXT(startInd, howMany);
+
+
+				u32 currentOp = rds->sharedLog.log[counter].op;
+				u32 bit = 1 - (currentOp >> CYCLE_BITS);
+
+				for (index = 0; (index < maxNodeIndex); ++index) {
+					if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
+						nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
+						
+							rds->sharedLog.log[counter].arg1 = rds->local[rds->leader[thrid].val].replica->slot[index].arg1;
+							rds->sharedLog.log[counter].arg2 = rds->local[rds->leader[thrid].val].replica->slot[index].arg2;
+
+							rds->sharedLog.log[counter].op = nextOp | (bit << CYCLE_BITS);
+
+							counter = INC(counter);
+							if (counter == 0) bit = 1 - bit;
+
+					}
+				}
+
+				NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
+
+				UpdateFromLog(rds, thrid, LOGTAIL_UNMARKED(startInd));
+				rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
+				if (LOGTAIL_UNMARKED(rds->local[rds->leader[thrid].val].replica->localTail) < LOGTAIL_UNMARKED(startInd)) rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
+
+
+			
+				do {
+					oldVal = rds->sharedLog.readLogTail.val;
+					if (oldVal < finalInd) {
+						if (CompareSwap32(&(rds->sharedLog.readLogTail.val), oldVal, finalInd) == oldVal) {
+							break;
+						}
+					}
+				} while (oldVal < finalInd);
+
+
+				for (index = 0; (index < maxNodeIndex); ++index) {
+
+					if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
+
+						nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
+						rds->local[rds->leader[thrid].val].replica->slot[index].op = EMPTY;
+						rds->local[rds->leader[thrid].val].replica->slot[index].resp.val = Execute_local(rds, thrid, nextOp, rds->local[rds->leader[thrid].val].replica->slot[index].arg1, rds->local[rds->leader[thrid].val].replica->slot[index].arg2);
+					}
+				}
+
+				NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
+				UpdateMin(rds, thrid, startInd, howMany);
+
+				howMany = 0;
+
+			}
+			else {
+				finalInd = startInd = rds->sharedLog.logTail.val;
+
+				if (rds->local[rds->leader[thrid].val].replica->localTail < finalInd) {
+					NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
+					if (rds->local[rds->leader[thrid].val].replica->localTail < finalInd) {
+						UpdateFromLog(rds, thrid, LOGTAIL_UNMARKED(finalInd));
+						rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
+					}
+					NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
+				}
+			}
+
+		
+			rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
+
+			redisAssert(rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val != MAX_UINT32);
+			return rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val;
+		}
+		else {
+			// not combiner, wait for response or wait to become combiner
+
+			while ((rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val == MAX_UINT32)
+				&& (rds->local[rds->leader[thrid].val].replica->combinerLock.val != 0)) {
+				_mm_pause();
+			}
+
+			if (rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val != MAX_UINT32) {
+				return rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val;
+			}
+		}
+
+	} while (1);
+}
+
+
+u32 CombineReads(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
+	u32 readTail, resp;
+
+	readTail = rds->sharedLog.readLogTail.val;
+
+	u32 id = thrid % NUM_THREADS_PER_NODE;
+
+	while (rds->local[rds->leader[thrid].val].replica->localTail < readTail) {
+		if (rds->local[rds->leader[thrid].val].replica->combinerLock.val == 0) {
+			if (NodeRWLock_Dist_TryWLock(&(rds->local[rds->leader[thrid].val].replica->lock))) {
+				if (rds->local[rds->leader[thrid].val].replica->localTail < readTail) {
+					UpdateFromLog(rds, thrid, LOGTAIL_UNMARKED(readTail));
+					rds->local[rds->leader[thrid].val].replica->localTail = readTail;
+				}
+
+				resp = RDS_contains_local(rds, thrid, arg1, arg2);
+				NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock), id);
+				return resp;
+			}
+			
+		}
+		else {
+			_mm_pause();
+		}
+	}
+
+	NodeRWLock_Dist_RLock(&(rds->local[rds->leader[thrid].val].replica->lock), id);	
+	resp = RDS_contains_local(rds, thrid, arg1, arg2);
+	NodeRWLock_Dist_RUnlock(&(rds->local[rds->leader[thrid].val].replica->lock), id);
+	return resp;
+	
+}
+
+
+#if 0 
+// Update for NR6
 u32 CombineReads(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 readTail, resp;
 	u32 id = thrid % NUM_THREADS_PER_NODE;
@@ -641,7 +916,7 @@ u32 CombineReads(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	return Combine(rds, thrid, op, arg1, arg2);
 	
 }
-
+#endif
 
 
 inline void NodeReplica_OPTR_Init(NodeReplica_OPTR *nr) {
@@ -651,8 +926,7 @@ inline void NodeReplica_OPTR_Init(NodeReplica_OPTR *nr) {
 	nr->localReg = createZsetObject();  // sl_set_new_local();
 	nr->localTail = 0;
 	nr->localBit = 1;
-	nr->combinerLock.val = 0;
-	nr->startId = nr->endId = 0;
+	nr->combinerLock.val = 0;	
 	nr->threadCnt = 0;
 	NodeRWLock_Dist_Init(&(nr->lock));
 	for (i = 0; i < NUM_THREADS_PER_NODE; ++i) nr->slot[i].op = EMPTY;

@@ -37,11 +37,9 @@ struct NodeReplica_OPTRS {
 	SharedDSType *localReg;
 	u32 localTail;
 	u32 localBit;
-	u32 startId;
-	u32 endId;
 	// Per replica thread count
 	u32 threadCnt;
-	char pad_[CACHE_LINE - 4 * sizeof(u32)-sizeof(SharedDSType*)];
+	char pad_[CACHE_LINE - 3 * sizeof(u32)-sizeof(SharedDSType*)];
 	PaddedVolatileUInt combinerLock;	
 	NodeRWLock_Dist lock;
 	PaddedSlot slot[NUM_THREADS_PER_NODE];

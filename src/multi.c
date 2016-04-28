@@ -394,6 +394,7 @@ void execBatch(redisClient *c) {
 
 		//SID: TEMPORARY CODE FOR BENCHMARKING
 		if (readCmd.cmd == 0 && c->cmd->proc == zrankCommand) {
+		//if (readCmd.argc == 0 && c->cmd->proc == zrankCommand) {
 			readCmd.argc = c->argc;
 			readCmd.argv = c->argv;
 			readCmd.cmd = c->cmd;
@@ -406,6 +407,7 @@ void execBatch(redisClient *c) {
 		if (readCmd.cmd != 0 && writeCmd.cmd != 0)
 		{
 			float readRatios[] = { 0.0, 0.8, 0.9, 0.98, 1.0 };			
+			//float readRatios[] = {0.0 };
 			volatile u32* volatile activeReady = &ready1;
 
 			for (int expCnt = 0; expCnt < sizeof(readRatios) / sizeof(float); expCnt++)

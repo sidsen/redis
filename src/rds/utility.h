@@ -430,7 +430,7 @@ inline void NodeRWLock_Dist_Init(NodeRWLock_Dist *lk);
 inline bool NodeRWLock_Dist_TryRLock(NodeRWLock_Dist *lk, u32 id);
 inline void NodeRWLock_Dist_RLock(NodeRWLock_Dist *lk, u32 id);
 inline void NodeRWLock_Dist_RUnlock(NodeRWLock_Dist *lk, u32 id);
-inline bool NodeRWLock_Dist_TryWLock(NodeRWLock_Dist *lk, u32 id);
+inline bool NodeRWLock_Dist_TryWLock(NodeRWLock_Dist *lk);
 inline void NodeRWLock_Dist_WLock(NodeRWLock_Dist *lk);
 inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk);
 
@@ -443,6 +443,7 @@ inline void NodeRWLock_Dist_Init(NodeRWLock_Dist *lk) {
 	for (i = 0; i < NUM_THR_NODE; ++i) lk->rLock[i].val = 0;
 }
 
+#if 0
 inline bool NodeRWLock_Dist_TryRLock(NodeRWLock_Dist *lk, u32 id) {
 	if (lk->wLock.val == 0) {
 		lk->rLock[id].val = 1;
@@ -456,19 +457,20 @@ inline bool NodeRWLock_Dist_TryRLock(NodeRWLock_Dist *lk, u32 id) {
 	}
 	return false;
 }
+#endif
 
 inline void NodeRWLock_Dist_RLock(NodeRWLock_Dist *lk, u32 id) {
 	do {
-		if (lk->wLock.val == 0) {
-			lk->rLock[id].val = 1;
-			MEMBAR;
-			if (lk->wLock.val == 0) return;
-			else {
-				lk->rLock[id].val = 0;
-				MEMBAR;
-			}
+		while (lk->wLock.val != 0) {
+			_mm_pause();
 		}
-		_mm_pause();
+		lk->rLock[id].val = 1;
+		MEMBAR;
+		if (lk->wLock.val == 0) return;
+		else {
+			lk->rLock[id].val = 0;
+			MEMBAR;
+		}		
 	} while (1);
 }
 
@@ -480,20 +482,35 @@ inline void NodeRWLock_Dist_RUnlock(NodeRWLock_Dist *lk, u32 id) {
 
 inline void NodeRWLock_Dist_WLock(NodeRWLock_Dist *lk) {
 	int i;
-	// we always have only one writer, so we don't need to synchronize on the writer lock	
-	assert(lk->wLock.val == 0);
-	lk->wLock.val = 1;
-	MEMBAR;
-	// wait for the readers
-	for (i = 0; i < NUM_THR_NODE; ++i)  {
-		while (lk->rLock[i].val > 0);
-	}
+
+	do {
+		while (lk->wLock.val != 0) _mm_pause();
+		if (CompareSwap32(&(lk->wLock.val), 0, 1) == 0) {
+			for (int i = 0; i < NUM_THR_NODE; ++i)  {
+				while (lk->rLock[i].val > 0) _mm_pause();
+			}
+			return;
+		}
+	} while (1);	
 }
 
 
+
+inline bool NodeRWLock_Dist_TryWLock(NodeRWLock_Dist *lk) {
+	int i;
+	
+	if (lk->wLock.val != 0) return false;
+	if (CompareSwap32(&(lk->wLock.val), 0, 1) == 0) {
+		for (int i = 0; i < NUM_THR_NODE; ++i)  {
+			while (lk->rLock[i].val > 0) _mm_pause();
+		}
+		return true;
+	}
+	return false;	
+}
+
 inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk) {
-	lk->wLock.val = 0;
-	// combiner lock is always released after this lock
+	lk->wLock.val = 0;	
 	//MEMBAR;
 }
 

@@ -17,6 +17,16 @@ Change log size
 #define INC(x)       (((x) + 1) & (_logSize - 1))
 #define ADDN(x, n)    (((x) + (n)) & (_logSize - 1))
 
+
+#define LOG_ENTRY_MASK         1048575      /* _logSize - 1*/
+#define LOG_COUNTER_MASK       4293918720
+#define MAX_LOG_SIZE           MAXUINT32
+
+#define LOGTAIL_GET(x)          (x)
+#define LOGTAIL_NEXT(x, val)    ((x) + (val))
+#define LOGTAIL_UNMARKED(x)     ((x) & LOG_ENTRY_MASK)
+
+
 #define SharedLogEntry  SharedLogEntryNoPadding
 
 struct SharedLogEntryPaddingS {	
@@ -43,9 +53,19 @@ typedef struct SharedLogEntryPaddingS                   SharedLogEntryPadding;
 typedef struct SharedLogEntryNoPaddingS                 SharedLogEntryNoPadding;
 typedef union SharedLogEntryIndexS                     SharedLogEntryIndex;
 
+#if 0
 struct SharedLogS {
 	SharedLogEntry log[_logSize];
 	volatile SharedLogEntryIndex  logTail;
+	volatile SharedLogEntryIndex  logMin;
+} CACHE_ALIGN;
+#endif
+
+
+struct SharedLogS {
+	SharedLogEntry log[_logSize];
+	volatile SharedLogEntryIndex  logTail;
+	volatile SharedLogEntryIndex readLogTail;
 	volatile SharedLogEntryIndex  logMin;
 } CACHE_ALIGN;
 
@@ -56,6 +76,7 @@ inline void SharedLog_Init(SharedLog *sl) {
 	//printf("\n-----------------> SHAREDLOG_INIT %d\n", 0);
 	for (i = 0; i < _logSize; ++i) sl->log[i].op = 0;
 	sl->logTail.val = 0;
+	sl->readLogTail.val = 0;
 	sl->logMin.val = _logSize - 1;
 }
 
@@ -63,6 +84,8 @@ inline void SharedLog_Print(SharedLog *sl) {
 	printf("current log size %u\n", sl->logTail.val);
 	//for (int i = 0; i < logTail; ++i) printf("%u %u\n", log[i].op, log[i].arg);
 }
+
+#if 0
 
 // use this to get one or more slots in the log
 inline u32 SharedLog_GetNextTail(SharedLog *sl, u32 howMany) {
@@ -93,5 +116,24 @@ inline u32 SharedLog_GetNextTail1(SharedLog *sl) {
 	} while (CompareSwap32(&(sl->logTail.val), tail, nextTail) != tail);
 	return tail;
 }
+#endif
+
+
+// use this to get one or more slots in the log
+inline u32 SharedLog_GetNextTail(SharedLog *sl, u32 howMany) {
+	u32 tail;
+	u32 nextTail;
+	u32 min, p;
+	do {
+		min = sl->logMin.val;
+		p = (min - NUM_THREADS_PER_NODE - 1);
+		tail = sl->logTail.val;
+		nextTail = LOGTAIL_NEXT(tail, howMany);
+		if (p < tail) return MAX_LOG_SIZE;					
+	} while (CompareSwap32(&(sl->logTail.val), tail, nextTail) != tail);
+	return tail;
+}
+
+
 
 #endif  // _SHAREDLOG_H
