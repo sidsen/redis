@@ -423,14 +423,15 @@ void execBatch(redisClient *c) {
 				}
 
 				//activeReady = &ready1;
-				float readRatio = server.exp_read_ratio;
 				/* Run the experiment exp-trials times */
 				do {
 					AtomicInc32(activeReady);
 					while (*activeReady != server.threadpool_size) {
 						;
 					}
-	
+
+					float readRatio = server.exp_read_ratio;
+
 					/* Use the extra trial round to synchronize the end of the experiment */
 					if (trials == server.exp_trials) {
 						if (c->currthread == server.threadpool_size - 1) {

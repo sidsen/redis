@@ -297,7 +297,7 @@ static void *threadpool_thread(void *threadpool)
 
 	/* Pin the thread */
 	pinThread(thread_id % MAX_THREADS);
-	_tmreportprocessor(thread_id);
+	_tmreportprocessor(thread_id % MAX_THREADS);
 	/* The last thread is used for measurement and should not be associated with a replica */
 	if ((server.repl || server.flat) && (thread_id != server.threadpool_size - 1)) {
 		if (server.repl) {
