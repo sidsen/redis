@@ -141,6 +141,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{4F5E958F-366F-4C69-B9FE-A46F2A91DF6E}"
 	ProjectSection(SolutionItems) = preProject
 		setups\rds-experiments.txt = setups\rds-experiments.txt
+		setups\rds-run-exps.py = setups\rds-run-exps.py
 	EndProjectSection
 EndProject
 Global

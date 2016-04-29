@@ -3422,12 +3422,14 @@ int genericLockKey(redisClient *c, robj *key, int trylock) {
 	//if (!server.locking_mode) return 0;
 
 	//TODO:PERF TRY FIRST TO AVOID DB LOCK (IS THIS THREAD-SAFE? NO, I THINK THIS IS CAUSING PROBLEMS. FIX BY DISABLING REHASHING?)
+	/*
 	de = dictFind(c->db->locked_keys, key->ptr);
 	if (de) {
 		lock = dictGetVal(de);
 		pthread_mutex_lock(lock);
 		return 0;
 	}
+	*/
 
 	pthread_mutex_lock(c->db->lock);
 	de = dictFind(c->db->locked_keys, key->ptr);
