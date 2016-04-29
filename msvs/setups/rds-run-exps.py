@@ -103,7 +103,8 @@ def main(argv):
         updateStats(threads, lockResults, stdout)
 
     # Print results
-    print "\nRDS results:\n"
+    print "\n=============== RESULTS ===============\n\n"
+    print "RDS results:\n"
     printStats(threadCnts, rdsResults)
     print "FC results:\n"
     printStats(threadCnts, fcResults)
