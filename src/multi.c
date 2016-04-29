@@ -393,12 +393,12 @@ void execBatch(redisClient *c) {
 		c->cmd = c->bstate.commands[j].cmd;
 
 		//SID: TEMPORARY CODE FOR BENCHMARKING
-		if (readCmd.cmd == 0 && c->cmd->proc == zrankCommand) {
+		if ((readCmd.cmd == NULL) && c->cmd->proc == zrankCommand) {
 			readCmd.argc = c->argc;
 			readCmd.argv = c->argv;
 			readCmd.cmd = c->cmd;
 		}
-		if ((writeCmd.argc == 0) && (c->cmd->proc == zincrbyCommand)) {
+		if ((writeCmd.cmd == NULL) && (c->cmd->proc == zincrbyCommand)) {
 			writeCmd.argc = c->argc;
 			writeCmd.argv = c->argv;
 			writeCmd.cmd = c->cmd;
