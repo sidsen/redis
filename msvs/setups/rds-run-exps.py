@@ -39,7 +39,6 @@ def updateStats(threads, results, output):
     nums = re.findall("\d+\.\d+ ops/sec", output)
     readRatios = re.findall("read ratio = \d+\.\d+", output)
     i = 0
-    print output
     for ratio in readRatios:
         r = ratio.split()[-1]
         if r not in results:
