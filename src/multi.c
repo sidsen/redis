@@ -416,7 +416,7 @@ void execBatch(redisClient *c) {
 			float readRatios[] = { 0.0, 0.8, 0.9, 0.98, 1.0 };			
 			//float readRatios[] = {0.0 };
 			//volatile u32* volatile activeReady = &ready1;
-			u32* volatile activeReady1 = &ready3;
+			u32* volatile activeReady1 = &(ready3.val);
 		
 
 			for (int expCnt = 0; expCnt < sizeof(readRatios) / sizeof(float); expCnt++)
@@ -529,7 +529,7 @@ void execBatch(redisClient *c) {
 			c->cmd = orig_cmd;
 
 			if (c->currthread == server.threadpool_size - 1) {
-				//system("pause");
+				system("pause");
 			}
 
 			/* Exit redis to end the experiment */			
