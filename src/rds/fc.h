@@ -8,7 +8,7 @@ struct FCS;
 typedef struct FCS FC;
 
 //TODO:FC TEMPORARILY CREATE GLOBAL INSTANCE
-extern FC* fc;
+extern volatile FC*  fc;
 extern dict* thread_ids_fc;
 /* Hash type hash table (note that small hashes are represented with ziplists) */
 #ifndef IntDictType
@@ -31,6 +31,13 @@ struct FCS {
 	char pad_[CACHE_LINE - sizeof(SharedDSType*)];
 	volatile u32 threadCnt;
 	PaddedVolatileUInt combinerLock;
+#ifdef FCRW	
+	NodeRWLock_Dist            rwlock;		
+#endif
+
+#ifdef RWL	
+	NodeRWLock_Dist            rwlock;
+#endif
 	PaddedSlot slot[MAX_THREADS];
 } CACHE_ALIGN;
 

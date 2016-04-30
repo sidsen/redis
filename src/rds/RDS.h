@@ -64,7 +64,8 @@ typedef union PaddedNodeReplicaPtr_OPTRU      PaddedNodeReplicaPtr_OPTR;
 // Register_NR3_OPTR {
 struct RDSS {
 	// Global thread count (note: volatile seems essential)
-	volatile u32 threadCnt;
+	//volatile u32 threadCnt;
+	PaddedVolatileUInt threadCnt;
 	SharedLog sharedLog;
 	PaddedNodeReplicaPtr_OPTR local[MAX_THREADS];
 	PaddedUInt leader[MAX_THREADS];

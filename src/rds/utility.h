@@ -34,6 +34,18 @@
 /*******************************************************
 CONFIGURATION
 ********************************************************/
+#if 0
+#define FCRW
+#else
+#undef  FCRW
+#endif
+
+#if 0
+#define RWL
+#else
+#undef RWL
+#endif
+
 
 /* if this is enabled all memory is allocated from node 0
 otherwise memory is allocated from the node local to each processor */
@@ -420,8 +432,9 @@ inline void Backoff(u32 times) {
 
 // New RW Lock
 struct NodeRWLock_DistS {
+	PaddedUInt numThreads;
 	PaddedVolatileUInt wLock;
-	PaddedVolatileUInt rLock[NUM_THR_NODE];	
+	PaddedVolatileUInt rLock[MAX_THREADS];	
 } CACHE_ALIGN;
 
 typedef struct NodeRWLock_DistS  NodeRWLock_Dist;
@@ -434,13 +447,14 @@ inline bool NodeRWLock_Dist_TryWLock(NodeRWLock_Dist *lk);
 inline void NodeRWLock_Dist_WLock(NodeRWLock_Dist *lk);
 inline void NodeRWLock_Dist_WUnlock(NodeRWLock_Dist *lk);
 
-inline void NodeRWLock_Dist_Init(NodeRWLock_Dist *lk) {
+inline void NodeRWLock_Dist_Init(NodeRWLock_Dist *lk, u32 nrthr) {
 	int i;
 
+	lk->numThreads.val = nrthr;
 	//printf("\n-----------------> RWLOCKINIT %p\n", lk);
 
 	lk->wLock.val = 0;
-	for (i = 0; i < NUM_THR_NODE; ++i) lk->rLock[i].val = 0;
+	for (i = 0; i < lk->numThreads.val; ++i) lk->rLock[i].val = 0;
 }
 
 #if 0
@@ -486,7 +500,7 @@ inline void NodeRWLock_Dist_WLock(NodeRWLock_Dist *lk) {
 	do {
 		while (lk->wLock.val != 0) _mm_pause();
 		if (CompareSwap32(&(lk->wLock.val), 0, 1) == 0) {
-			for (int i = 0; i < NUM_THR_NODE; ++i)  {
+			for (int i = 0; i < lk->numThreads.val; ++i)  {
 				while (lk->rLock[i].val > 0) _mm_pause();
 			}
 			return;
@@ -501,7 +515,7 @@ inline bool NodeRWLock_Dist_TryWLock(NodeRWLock_Dist *lk) {
 	
 	if (lk->wLock.val != 0) return false;
 	if (CompareSwap32(&(lk->wLock.val), 0, 1) == 0) {
-		for (int i = 0; i < NUM_THR_NODE; ++i)  {
+		for (int i = 0; i < lk->numThreads.val; ++i)  {
 			while (lk->rLock[i].val > 0) _mm_pause();
 		}
 		return true;

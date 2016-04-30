@@ -4,7 +4,7 @@
 #include "..\redis.h"
 
 //TODO:FC TEMPORARILY CREATE GLOBAL 
-FC* fc;
+volatile FC* fc = NULL;
 dict* thread_ids_fc;
 
 /* Hash type hash table (note that small hashes are represented with ziplists) */
@@ -93,6 +93,7 @@ inline void DoOp_fc(FC *fc, u32 thrid, u32 op, u32 arg1, u32 arg2) {
 }
 #endif
 
+
 u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 	u32 nextOp;
 	u32 counter, startInd, finalInd;	
@@ -114,6 +115,10 @@ u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 			&& (CompareSwap32(&(fc->combinerLock.val), 0, 1) == 0)) {
 			// I am the Combiner		
 
+#ifdef FCRW
+			NodeRWLock_Dist_WLock(&(fc->rwlock));			
+#endif
+
 			for (int retries = 0; retries < NUM_RET; ++retries) {
 
 				for (u32 index = 0; (index < fc->threadCnt); ++index) {
@@ -124,6 +129,10 @@ u32 Combine_fc(FC *fc, int thrid, u32 op, u32 arg1, u32 arg2) {
 					}
 				}
 			}
+
+#ifdef FCRW			
+			NodeRWLock_Dist_WUnlock(&(fc->rwlock));
+#endif
 
 			fc->combinerLock.val = 0;
 
@@ -171,6 +180,14 @@ void FC_Start(FC *fc) {
 	int i;
 	fc->localReg = createZsetObject();  // sl_set_new_local();
 	fc->combinerLock.val = 0;
+#ifdef FCRW
+	NodeRWLock_Dist_Init(&(fc->rwlock), MAX_THREADS);
+#endif
+
+#ifdef RWL
+	NodeRWLock_Dist_Init(&(fc->rwlock), MAX_THREADS);
+#endif
+
 	fc->threadCnt = 0;
 	for (i = 0; i < MAX_THREADS; ++i) fc->slot[i].op = EMPTY;
 }
@@ -190,19 +207,56 @@ void FC_StartThread(FC *fc, int thrid) {
 }
 
 u32 FC_contains(FC *fc, int thrid, u32 arg1, u32 arg2) {	
+#ifdef FCRW
+	u32 resp;
+
+	NodeRWLock_Dist_RLock(&(fc->rwlock), thrid);
+	resp = zrankGenericCommandLocal(fc->localReg, arg1);
+	NodeRWLock_Dist_RUnlock(&(fc->rwlock), thrid);
+	return resp;
+#elif defined (RWL)
+	u32 resp;
+	NodeRWLock_Dist_RLock(&(fc->rwlock), thrid);
+	resp = zrankGenericCommandLocal(fc->localReg, arg1);
+	NodeRWLock_Dist_RUnlock(&(fc->rwlock), thrid);
+	return resp;
+#else
 	return Combine_fc(fc, thrid, CONTAINS, arg1, arg2);
+#endif
 }
 
+
+
 u32 FC_insert(FC *fc, int thrid, u32 arg1, u32 arg2) {
+#ifdef RWL
+	u32 resp;
+	NodeRWLock_Dist_WLock(&(fc->rwlock), thrid);
+	resp = 	zaddGenericCommandLocal(fc->localReg, arg1, arg2, 0);
+	NodeRWLock_Dist_WUnlock(&(fc->rwlock), thrid);
+	return resp;
+#else
 	return Combine_fc(fc, thrid, INSERT, arg1, arg2);		
+#endif
 }
 
 u32 FC_incrby(FC *fc, int thrid, u32 arg1, u32 arg2) {
+#ifdef RWL
+	u32 resp;
+	NodeRWLock_Dist_WLock(&(fc->rwlock), thrid);
+	resp = zaddGenericCommandLocal(fc->localReg, arg1, arg2, 1);
+	NodeRWLock_Dist_WUnlock(&(fc->rwlock), thrid);
+	return resp;
+#else
 	return Combine_fc(fc, thrid, INCRBY, arg1, arg2);
+#endif
 }
 
 u32 FC_remove(FC *fc, int thrid, u32 arg1, u32 arg2) {
+#ifdef RWL
+	redisAssert(0);
+#else
 	return Combine_fc(fc, thrid, REMOVE, arg1, arg2);
+#endif
 }
 
 void FC_FinishThread(FC *fc, int thrid) {

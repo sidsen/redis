@@ -140,7 +140,7 @@ threadpool_t *threadpool_create(int thread_count, int queue_size, int flags)
 	(that way we know the replicas have been allocated by the leaders) */
 	if (server.repl) {
 		// Recall one thread is used for measurement only so will be unregistered
-		while (rds->threadCnt != server.threadpool_size - 1)
+		while (rds->threadCnt.val != server.threadpool_size - 1)
 			;
 		RDS_SetReplicaThreadCounts(rds);
 	}

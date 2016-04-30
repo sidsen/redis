@@ -733,6 +733,8 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 	int howMany = 0;
 	u32 maxNodeIndex = rds->local[rds->leader[thrid].val].replica->threadCnt;
 
+	int NUM_RET = maxNodeIndex;
+
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val = MAX_UINT32;
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg1 = arg1;
 	rds->local[rds->leader[thrid].val].replica->slot[myIndex].arg2 = arg2;
@@ -749,30 +751,32 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 			// I am the Combiner			
 
-			//int howMany = 0;
-			u32 index;
-			for (index = 0; (index < maxNodeIndex); ++index) {
-				if (rds->local[rds->leader[thrid].val].replica->slot[index].op != EMPTY) {					
-					++howMany;					
-					rds->local[rds->leader[thrid].val].replica->slot[index].op |= (1 << CYCLE_BITS);
-				}
-			}
+			for (int retries = 0; retries < NUM_RET; ++retries) {
 
-			
-
-			if (howMany > 0) {
-				startInd = AppendAndUpdate(rds, thrid, howMany);
-				counter = LOGTAIL_UNMARKED(startInd);
-				finalInd = LOGTAIL_NEXT(startInd, howMany);
-
-
-				u32 currentOp = rds->sharedLog.log[counter].op;
-				u32 bit = 1 - (currentOp >> CYCLE_BITS);
-
+				//int howMany = 0;
+				u32 index;
 				for (index = 0; (index < maxNodeIndex); ++index) {
-					if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
-						nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
-						
+					if (rds->local[rds->leader[thrid].val].replica->slot[index].op != EMPTY) {
+						++howMany;
+						rds->local[rds->leader[thrid].val].replica->slot[index].op |= (1 << CYCLE_BITS);
+					}
+				}
+
+
+
+				if (howMany > 0) {
+					startInd = AppendAndUpdate(rds, thrid, howMany);
+					counter = LOGTAIL_UNMARKED(startInd);
+					finalInd = LOGTAIL_NEXT(startInd, howMany);
+
+
+					u32 currentOp = rds->sharedLog.log[counter].op;
+					u32 bit = 1 - (currentOp >> CYCLE_BITS);
+
+					for (index = 0; (index < maxNodeIndex); ++index) {
+						if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
+							nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
+
 							rds->sharedLog.log[counter].arg1 = rds->local[rds->leader[thrid].val].replica->slot[index].arg1;
 							rds->sharedLog.log[counter].arg2 = rds->local[rds->leader[thrid].val].replica->slot[index].arg2;
 
@@ -781,57 +785,57 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 							counter = INC(counter);
 							if (counter == 0) bit = 1 - bit;
 
-					}
-				}
-
-				NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
-
-				UpdateFromLog(rds, thrid, LOGTAIL_UNMARKED(startInd));
-				rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
-				if (LOGTAIL_UNMARKED(rds->local[rds->leader[thrid].val].replica->localTail) < LOGTAIL_UNMARKED(startInd)) rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
-
-
-			
-				do {
-					oldVal = rds->sharedLog.readLogTail.val;
-					if (oldVal < finalInd) {
-						if (CompareSwap32(&(rds->sharedLog.readLogTail.val), oldVal, finalInd) == oldVal) {
-							break;
 						}
 					}
-				} while (oldVal < finalInd);
 
-
-				for (index = 0; (index < maxNodeIndex); ++index) {
-
-					if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
-
-						nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
-						rds->local[rds->leader[thrid].val].replica->slot[index].op = EMPTY;
-						rds->local[rds->leader[thrid].val].replica->slot[index].resp.val = Execute_local(rds, thrid, nextOp, rds->local[rds->leader[thrid].val].replica->slot[index].arg1, rds->local[rds->leader[thrid].val].replica->slot[index].arg2);
-					}
-				}
-
-				NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
-				UpdateMin(rds, thrid, startInd, howMany);
-
-				howMany = 0;
-
-			}
-			else {
-				finalInd = startInd = rds->sharedLog.logTail.val;
-
-				if (rds->local[rds->leader[thrid].val].replica->localTail < finalInd) {
 					NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
-					if (rds->local[rds->leader[thrid].val].replica->localTail < finalInd) {
-						UpdateFromLog(rds, thrid, LOGTAIL_UNMARKED(finalInd));
-						rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
-					}
-					NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
-				}
-			}
 
-		
+					UpdateFromLog(rds, thrid, LOGTAIL_UNMARKED(startInd));
+					rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
+					if (LOGTAIL_UNMARKED(rds->local[rds->leader[thrid].val].replica->localTail) < LOGTAIL_UNMARKED(startInd)) rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
+
+
+
+					do {
+						oldVal = rds->sharedLog.readLogTail.val;
+						if (oldVal < finalInd) {
+							if (CompareSwap32(&(rds->sharedLog.readLogTail.val), oldVal, finalInd) == oldVal) {
+								break;
+							}
+						}
+					} while (oldVal < finalInd);
+
+
+					for (index = 0; (index < maxNodeIndex); ++index) {
+
+						if (((rds->local[rds->leader[thrid].val].replica->slot[index].op >> CYCLE_BITS) ^ 1) == 0) {
+
+							nextOp = rds->local[rds->leader[thrid].val].replica->slot[index].op  & CYCLE_MASK;
+							rds->local[rds->leader[thrid].val].replica->slot[index].op = EMPTY;
+							rds->local[rds->leader[thrid].val].replica->slot[index].resp.val = Execute_local(rds, thrid, nextOp, rds->local[rds->leader[thrid].val].replica->slot[index].arg1, rds->local[rds->leader[thrid].val].replica->slot[index].arg2);
+						}
+					}
+
+					NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
+					UpdateMin(rds, thrid, startInd, howMany);
+
+					howMany = 0;
+
+				}
+				else {
+					finalInd = startInd = rds->sharedLog.logTail.val;
+
+					if (rds->local[rds->leader[thrid].val].replica->localTail < finalInd) {
+						NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
+						if (rds->local[rds->leader[thrid].val].replica->localTail < finalInd) {
+							UpdateFromLog(rds, thrid, LOGTAIL_UNMARKED(finalInd));
+							rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
+						}
+						NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
+					}
+				}
+
+			}
 			rds->local[rds->leader[thrid].val].replica->combinerLock.val = 0;
 
 			redisAssert(rds->local[rds->leader[thrid].val].replica->slot[myIndex].resp.val != MAX_UINT32);
@@ -928,7 +932,7 @@ inline void NodeReplica_OPTR_Init(NodeReplica_OPTR *nr) {
 	nr->localBit = 1;
 	nr->combinerLock.val = 0;	
 	nr->threadCnt = 0;
-	NodeRWLock_Dist_Init(&(nr->lock));
+	NodeRWLock_Dist_Init(&(nr->lock), NUM_THREADS_PER_NODE);
 	for (i = 0; i < NUM_THREADS_PER_NODE; ++i) nr->slot[i].op = EMPTY;
 }
 
@@ -952,7 +956,7 @@ int RDS_size(RDS *rds) {
 void RDS_Start(RDS *rds) {
 	int i;
 	//printf("\n-----------------> START %d\n", 0);
-	rds->threadCnt = 0;
+	rds->threadCnt.val = 0;
 	SharedLog_Init(&(rds->sharedLog));
 	for (i = 0; i < MAX_THREADS; ++i) rds->local[i].replica = NULL;
 }
@@ -976,7 +980,7 @@ void IntraSocket(RDS *rds, int thrid) {
 		//printf("create thrid %d leader %d\n", thrid, leaderT);
 	}
 	// Keep track of the total number of threads registered
-	AtomicInc32(&rds->threadCnt);
+	AtomicInc32(&(rds->threadCnt.val));
 	//printf("thrid %d leader %d\n", thrid, leaderT);
 }
 
@@ -990,15 +994,16 @@ void RDS_StartThread(RDS *rds, int thrid) {
 // This should be called *after* all threads have registered with RDS. It assumes thread
 // ids are assigned contiguously starting from 0. This method is not thread safe.
 void RDS_SetReplicaThreadCounts(RDS *rds) {
-	for (int i = 0; i < rds->threadCnt; i++) {
+	for (int i = 0; i < rds->threadCnt.val; i++) {
 		rds->local[rds->leader[i].val].replica->threadCnt++;
 	}
-	/* Check per-replica thread counts 
+	/*// Check per-replica thread counts 
 	for (int i = 0; i < rds->threadCnt; i += NUM_THREADS_PER_NODE) {
 		fprintf(stdout, "Replica %d has count %d", i, rds->local[i].replica->threadCnt);
 		fflush(stdout);
 	}
 	*/
+	
 }
 
 u32 RDS_contains(RDS *rds, int thrid, u32 arg1, u32 arg2) {

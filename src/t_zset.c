@@ -1518,10 +1518,10 @@ int zaddGenericCommandLocal(robj* zobj, double score, int member, int incr) {
 		* delete the key object from the skiplist, since the
 		* dictionary still has a reference to it. */
 		if (score != curscore) {
-			redisAssertWithInfo(NULL, curobj, zslDelete(zs->zsl, curscore, curobj));
-			//znode = zslDeleteNofree(zs->zsl, curscore, curobj);
-			znode = zslInsert(zs->zsl, score, curobj);
-			//znode = zslInsertNoalloc(zs->zsl, score, curobj, znode);
+			//redisAssertWithInfo(NULL, curobj, zslDelete(zs->zsl, curscore, curobj));
+			znode = zslDeleteNofree(zs->zsl, curscore, curobj);
+			//znode = zslInsert(zs->zsl, score, curobj);
+			znode = zslInsertNoalloc(zs->zsl, score, curobj, znode);
 			incrRefCount(curobj); /* Re-inserted in skiplist. */
 			dictGetVal(de) = &znode->score; /* Update score ptr. */
 			//server.dirty++;
