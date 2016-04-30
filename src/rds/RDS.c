@@ -751,12 +751,13 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 			// I am the Combiner			
 
-			for (int retries = 0; retries < NUM_RET; ++retries) {
+			for (int retries = 0; (retries < NUM_RET) || howMany; ++retries) {
 
 				//int howMany = 0;
 				u32 index;
 				for (index = 0; (index < maxNodeIndex); ++index) {
-					if (rds->local[rds->leader[thrid].val].replica->slot[index].op != EMPTY) {
+					op = rds->local[rds->leader[thrid].val].replica->slot[index].op;
+					if (op == INSERT || op == REMOVE || op == INCRBY) {
 						++howMany;
 						rds->local[rds->leader[thrid].val].replica->slot[index].op |= (1 << CYCLE_BITS);
 					}
@@ -764,7 +765,8 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 
 
-				if (howMany > 0) {
+				//if (howMany > 0) {
+				if ((howMany > maxNodeIndex / 2) || ((howMany > 0) && (retries % 10 == 0))) {
 					startInd = AppendAndUpdate(rds, thrid, howMany);
 					counter = LOGTAIL_UNMARKED(startInd);
 					finalInd = LOGTAIL_NEXT(startInd, howMany);
