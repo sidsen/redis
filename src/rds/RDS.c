@@ -283,10 +283,10 @@ inline u32 UpdateFromLogForReads(RDS *rds, int thrid, u32 to) {
 
 	for (index = rds->local[rds->leader[thrid].val].replica->localTail; index < to; ++index) {
 		u32 unmkind = LOGTAIL_UNMARKED(index);
-		if (((rds->sharedLog.log[index].op >> CYCLE_BITS) ^ rds->local[rds->leader[thrid].val].replica->localBit) != 0) {
+		if (((rds->sharedLog.log[unmkind].op >> CYCLE_BITS) ^ rds->local[rds->leader[thrid].val].replica->localBit) != 0) {
 			return index;
 		}
-		DoOp(rds, thrid, rds->sharedLog.log[index].op, rds->sharedLog.log[index].arg1, rds->sharedLog.log[index].arg2);
+		DoOp(rds, thrid, rds->sharedLog.log[unmkind].op, rds->sharedLog.log[unmkind].arg1, rds->sharedLog.log[unmkind].arg2);
 		if (unmkind == (_logSize - 1)) 
 			rds->local[rds->leader[thrid].val].replica->localBit = 1 - rds->local[rds->leader[thrid].val].replica->localBit;
 	}
@@ -726,9 +726,11 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 
 u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
-	u32 nextOp, oldVal;
+	u32 nextOp, oldVal, opt;
 	u32 counter, startInd, finalInd;
 	u32 myIndex = thrid % NUM_THREADS_PER_NODE;
+
+	u32 to;
 
 	int howMany = 0;
 	u32 maxNodeIndex = rds->local[rds->leader[thrid].val].replica->threadCnt;
@@ -756,8 +758,8 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 				//int howMany = 0;
 				u32 index;
 				for (index = 0; (index < maxNodeIndex); ++index) {
-					op = rds->local[rds->leader[thrid].val].replica->slot[index].op;
-					if (op == INSERT || op == REMOVE || op == INCRBY) {
+					opt = rds->local[rds->leader[thrid].val].replica->slot[index].op;
+					if (opt == INSERT || opt == REMOVE || opt == INCRBY) {
 						++howMany;
 						rds->local[rds->leader[thrid].val].replica->slot[index].op |= (1 << CYCLE_BITS);
 					}
@@ -825,13 +827,16 @@ u32 Combine(RDS *rds, int thrid, u32 op, u32 arg1, u32 arg2) {
 
 				}
 				else {
-					finalInd = startInd = rds->sharedLog.logTail.val;
+					//finalInd = startInd = rds->sharedLog.logTail.val;
+					finalInd = startInd = rds->sharedLog.readLogTail.val;
 
 					if (rds->local[rds->leader[thrid].val].replica->localTail < finalInd) {
 						NodeRWLock_Dist_WLock(&(rds->local[rds->leader[thrid].val].replica->lock));
 						if (rds->local[rds->leader[thrid].val].replica->localTail < finalInd) {
 							UpdateFromLog(rds, thrid, LOGTAIL_UNMARKED(finalInd));
 							rds->local[rds->leader[thrid].val].replica->localTail = finalInd;
+							//to = UpdateFromLogForReads(rds, thrid, (finalInd));
+							//rds->local[rds->leader[thrid].val].replica->localTail = to;
 						}
 						NodeRWLock_Dist_WUnlock(&(rds->local[rds->leader[thrid].val].replica->lock));
 					}

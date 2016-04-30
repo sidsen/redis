@@ -413,8 +413,8 @@ void execBatch(redisClient *c) {
 		}
 		if (readCmd.cmd != 0 && writeCmd.cmd != 0)		
 		{
-			//float readRatios[] = { 0.0, 0.8, 0.9, 0.98, 1.0 };			
-			float readRatios[] = {0.0 };
+			float readRatios[] = { 0.0, 0.8, 0.9, 0.98, 1.0 };			
+			//float readRatios[] = {0.0 };
 			//volatile u32* volatile activeReady = &ready1;
 			u32* volatile activeReady1 = &(ready3.val);
 		
