@@ -38,6 +38,10 @@ struct FCS {
 #ifdef RWL	
 	NodeRWLock_Dist            rwlock;
 #endif
+
+#ifdef SPINLOCK
+	SpinLock                   spinlock;
+#endif
 	PaddedSlot slot[MAX_THREADS];
 } CACHE_ALIGN;
 

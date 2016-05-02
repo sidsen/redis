@@ -46,6 +46,12 @@ CONFIGURATION
 #undef RWL
 #endif
 
+#if 1
+#define SPINLOCK
+#else
+#undef SPINLOCK
+#endif
+
 
 /* if this is enabled all memory is allocated from node 0
 otherwise memory is allocated from the node local to each processor */

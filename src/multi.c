@@ -413,8 +413,8 @@ void execBatch(redisClient *c) {
 		}
 		if (readCmd.cmd != 0 && writeCmd.cmd != 0)		
 		{
-			float readRatios[] = { 0.0, 0.8, 0.9, 0.98, 1.0 };			
-			//float readRatios[] = {0.0 };
+			//float readRatios[] = { 0.0, 0.8, 0.9, 0.98, 1.0 };			
+			float readRatios[] = {0.0 };
 			//volatile u32* volatile activeReady = &ready1;
 			u32* volatile activeReady1 = &(ready3.val);
 		
@@ -514,10 +514,10 @@ void execBatch(redisClient *c) {
 						//sumOps += totalOps[j];
 						sumOps += totalOpss[j].val;
 					}
-					//fprintf(stdout, "Experiment results (threads = %d, trials = %d, duration = %d, keyrange = %d, read ratio = %f): %10f ops/sec\n",
-					//	server.threadpool_size - 1, server.exp_trials, server.exp_duration_us, server.exp_keyrange, server.exp_read_ratio, sumOps / (server.exp_trials * (server.exp_duration_us / 1000000.0)));
-					fprintf(stdout, "%10f\n",
-						sumOps / (server.exp_trials * (server.exp_duration_us / 1000000.0)));
+					fprintf(stdout, "Experiment results (threads = %d, trials = %d, duration = %d, keyrange = %d, read ratio = %f): %10f ops/sec\n",
+						server.threadpool_size - 1, server.exp_trials, server.exp_duration_us, server.exp_keyrange, server.exp_read_ratio, sumOps / (server.exp_trials * (server.exp_duration_us / 1000000.0)));
+					//fprintf(stdout, "%10f\n",
+					//	sumOps / (server.exp_trials * (server.exp_duration_us / 1000000.0)));
 					fflush(stdout);
 					
 				}
