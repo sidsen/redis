@@ -529,7 +529,7 @@ void execBatch(redisClient *c) {
 			c->cmd = orig_cmd;
 
 			if (c->currthread == server.threadpool_size - 1) {
-				system("pause");
+				//system("pause");
 			}
 
 			/* Exit redis to end the experiment */			
