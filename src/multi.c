@@ -483,7 +483,7 @@ void execBatch(redisClient *c) {
 						//for (i = 0; *activeReady != 0; i++)
 						for (i = 0; *activeReady1 != 0; i++)
 						{
-							if (randLFSR() <= readRatio * USHRT_MAX)
+							if (prng_next() <= readRatio * ULLONG_MAX)
 							{
 								c->argc = readCmd.argc;
 								c->argv = readCmd.argv;

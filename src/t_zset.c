@@ -115,7 +115,7 @@ void zslFree(zskiplist *zsl) {
  * levels are less likely to be returned. */
 int zslRandomLevel(void) {
     int level = 1;
-    while ((randLFSR()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
+    while ((prng_next()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
         level += 1;
     return (level<ZSKIPLIST_MAXLEVEL) ? level : ZSKIPLIST_MAXLEVEL;
 }
@@ -1453,10 +1453,10 @@ void zaddGenericCommandReplFC(redisClient *c, int incr, int flat) {
 		int success;
 		if (incr) {
 			if (fc) {
-				success = FC_incrby(fc, c->currthread, (u32)(score), ((ustime() << 16) | randLFSR()) % server.exp_keyrange);
+				success = FC_incrby(fc, c->currthread, (u32)(score), prng_next() % server.exp_keyrange);
 			}
 			else {
-				success = RDS_incrby(rds, c->currthread, (u32)(score), ((ustime() << 16) | randLFSR()) % server.exp_keyrange);
+				success = RDS_incrby(rds, c->currthread, (u32)(score), prng_next() % server.exp_keyrange);
 			}
 		}
 		else {
@@ -3154,10 +3154,10 @@ void zrankGenericCommandReplFC(redisClient *c, int reverse, int flat) {
 		//TODO:PERF USELESS AS STRTOL FUNC USED FAILS ON LEADING ZEROS
 		ele = c->argv[2]; // = tryObjectEncoding(c->argv[2]);
 		if (fc) {
-			rank = FC_contains(fc, c->currthread, ((ustime() << 16) | randLFSR()) % server.exp_keyrange, 0);
+			rank = FC_contains(fc, c->currthread, prng_next() % server.exp_keyrange, 0);
 		}
 		else {
-			rank = RDS_contains(rds, c->currthread, ((ustime() << 16) | randLFSR()) % server.exp_keyrange, 0);
+			rank = RDS_contains(rds, c->currthread, prng_next() % server.exp_keyrange, 0);
 		}
 		if (c->noReply) {
 			return;
