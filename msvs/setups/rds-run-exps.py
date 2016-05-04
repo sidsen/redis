@@ -120,7 +120,7 @@ def main(argv):
         stdout, stderr = rs.communicate()
         updateStats(threads, slResults, stdout)
 
-        rs = runServer(threads, '')
+        rs = runServer(serverCmd, threads, '')
         # This call blocks; when its done, we know the server is done too
         runClient();
         stdout, stderr = rs.communicate()
