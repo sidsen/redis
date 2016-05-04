@@ -31,7 +31,7 @@ def runClient():
 
 # Runs redis server in a non-blocking way, returns a handle to the subprocess
 def runServer(cmd, threads, mode):
-    cmd = serverCmd + ' --threads ' + str(threads + 1) + ' ' + mode
+    cmd = cmd + ' --threads ' + str(threads + 1) + ' ' + mode
     print "Running command: " + cmd
     return subprocess.Popen(cmd.split(),
                             shell=False,
@@ -80,7 +80,7 @@ def main(argv):
         #else:
         #    errorExit("Unexpected command line argument " + opt + "\n" + usage())
 
-    threadCnts = [ 1, 6, 12, 18, 24, 30, 36, 42, 48 ]
+    threadCnts = [ 1, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45 ]
     throughputP = re.compile('\"(.+?)\".*?\"et\":\"(.+?)\"')
 
     rdsResults = {}
