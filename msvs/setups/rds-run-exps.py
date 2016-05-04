@@ -5,7 +5,10 @@ import subprocess
 import re
 
 # Global constants
-serverCmd = './redis-server.exe --maxheap 200mb --wm 1 --exp-trials 1 --exp-duration-us 1000000'
+serverCmd = './redis-server.exe --maxheap 200mb --wm 1 --exp-trials 3 --exp-duration-us 2000000'
+serverCmdFCRW = './redis-server-fcrw.exe --maxheap 200mb --wm 1 --exp-trials 3 --exp-duration-us 2000000'
+serverCmdRWL = './redis-server-rwl.exe --maxheap 200mb --wm 1 --exp-trials 3 --exp-duration-us 2000000'
+serverCmdSL = './redis-server-sl.exe --maxheap 200mb --wm 1 --exp-trials 3 --exp-duration-us 2000000'
 clientCmd = './redis-benchmark.exe -t zadd -c 100 -P 100 -n 200000 -r 10000 -q'
 clientCmd2 = './redis-benchmark.exe -t zmixed -c 250 -P 1 -n 3000 -r 10000 -f 50 -q'
 
@@ -27,7 +30,7 @@ def runClient():
     cli = subprocess.call(clientCmd2.split(), shell=False)
 
 # Runs redis server in a non-blocking way, returns a handle to the subprocess
-def runServer(threads, mode):
+def runServer(cmd, threads, mode):
     cmd = serverCmd + ' --threads ' + str(threads + 1) + ' ' + mode
     print "Running command: " + cmd
     return subprocess.Popen(cmd.split(),
@@ -82,19 +85,40 @@ def main(argv):
 
     rdsResults = {}
     fcResults = {}
+    fcrwResults = {}
+    rwlResults = {}
+    slResults = {}
     lockResults = {}
     for threads in threadCnts:
-        rs = runServer(threads, '--repl')
+        rs = runServer(serverCmd, threads, '--repl')
         # This call blocks; when its done, we know the server is done too
         runClient();
         stdout, stderr = rs.communicate()
         updateStats(threads, rdsResults, stdout)
 
-        rs = runServer(threads, '--fc')
+        rs = runServer(serverCmd, threads, '--fc')
         # This call blocks; when its done, we know the server is done too
         runClient();
         stdout, stderr = rs.communicate()
         updateStats(threads, fcResults, stdout)
+
+        rs = runServer(serverCmdFCRW, threads, '--fc')
+        # This call blocks; when its done, we know the server is done too
+        runClient();
+        stdout, stderr = rs.communicate()
+        updateStats(threads, fcrwResults, stdout)
+
+        rs = runServer(serverCmdRWL, threads, '--fc')
+        # This call blocks; when its done, we know the server is done too
+        runClient();
+        stdout, stderr = rs.communicate()
+        updateStats(threads, rwlResults, stdout)
+
+        rs = runServer(serverCmdSL, threads, '--fc')
+        # This call blocks; when its done, we know the server is done too
+        runClient();
+        stdout, stderr = rs.communicate()
+        updateStats(threads, slResults, stdout)
 
         rs = runServer(threads, '')
         # This call blocks; when its done, we know the server is done too
@@ -108,6 +132,12 @@ def main(argv):
     printStats(threadCnts, rdsResults)
     print "FC results:\n"
     printStats(threadCnts, fcResults)
+    print "FCRW results:\n"
+    printStats(threadCnts, fcrwResults)
+    print "RWL results:\n"
+    printStats(threadCnts, rwlResults)
+    print "SL results:\n"
+    printStats(threadCnts, slResults)
     print "Lock results:\n"
     printStats(threadCnts, lockResults)
     
