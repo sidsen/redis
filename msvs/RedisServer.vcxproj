@@ -76,6 +76,7 @@
     <TargetName>redis-server</TargetName>
     <GenerateManifest>false</GenerateManifest>
     <CustomBuildAfterTargets>Build</CustomBuildAfterTargets>
+    <IncludePath>C:\Users\icalciu\Source\Repos\REDIS\redis\src;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -211,12 +212,14 @@
     <ClCompile Include="..\src\pubsub.c" />
     <ClCompile Include="..\src\rand.c" />
     <ClCompile Include="..\src\rdb.c" />
+    <ClCompile Include="..\src\rds\czipf.cpp" />
     <ClCompile Include="..\src\rds\fc.c" />
     <ClCompile Include="..\src\rds\RDS.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\src\rds\SharedLog.c" />
     <ClCompile Include="..\src\rds\utility.c" />
+    <ClCompile Include="..\src\rds\zipf.cpp" />
     <ClCompile Include="..\src\redis.c" />
     <ClCompile Include="..\src\release.c" />
     <ClCompile Include="..\src\replication.c" />
@@ -257,12 +260,14 @@
     <ClInclude Include="..\src\pqsort.h" />
     <ClInclude Include="..\src\rand.h" />
     <ClInclude Include="..\src\rdb.h" />
+    <ClInclude Include="..\src\rds\czipf.h" />
     <ClInclude Include="..\src\rds\fc.h" />
     <ClInclude Include="..\src\rds\RDS.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
     </ClInclude>
     <ClInclude Include="..\src\rds\SharedLog.h" />
     <ClInclude Include="..\src\rds\utility.h" />
+    <ClInclude Include="..\src\rds\zipf.h" />
     <ClInclude Include="..\src\redis.h" />
     <ClInclude Include="..\src\rio.h" />
     <ClInclude Include="..\src\sds.h" />

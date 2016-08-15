@@ -406,7 +406,7 @@ void execBatch(redisClient *c) {
 			readCmd.argv = c->argv;
 			readCmd.cmd = c->cmd;			
 		}
-		if ((writeCmd.argc == 0) && (c->cmd->proc == zincrbyCommand)) {
+		if ((writeCmd.cmd == 0) && (c->cmd->proc == zincrbyCommand)) {
 			writeCmd.argc = c->argc;
 			writeCmd.argv = c->argv;
 			writeCmd.cmd = c->cmd;
@@ -414,7 +414,7 @@ void execBatch(redisClient *c) {
 		if (readCmd.cmd != 0 && writeCmd.cmd != 0)		
 		{
 			//float readRatios[] = { 0.0, 0.8, 0.9, 0.98, 1.0 };			
-			float readRatios[] = {0.0 };
+			float readRatios[] = {0.9};
 			//volatile u32* volatile activeReady = &ready1;
 			u32* volatile activeReady1 = &(ready3.val);
 		

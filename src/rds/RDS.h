@@ -43,6 +43,8 @@ struct NodeReplica_OPTRS {
 	PaddedVolatileUInt combinerLock;	
 	NodeRWLock_Dist lock;
 	PaddedSlot slot[NUM_THREADS_PER_NODE];
+
+	void *_Zgenerator;
 } CACHE_ALIGN;
 
 typedef struct NodeReplica_OPTRS                        NodeReplica_OPTR;

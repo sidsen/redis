@@ -185,7 +185,7 @@ void FC_Start(FC *fc) {
 #endif
 
 #ifdef RWL
-	NodeRWLock_Dist_Init(&(fc->rwlock), MAX_THREADS);
+	NodeRWLock_Dist_Init(&(fc->rwlock), MAX_THREADS);	
 #endif
 
 #ifdef SPINLOCK
@@ -239,11 +239,19 @@ u32 FC_contains(FC *fc, int thrid, u32 arg1, u32 arg2) {
 
 u32 FC_insert(FC *fc, int thrid, u32 arg1, u32 arg2) {
 #ifdef RWL
+	
+//	if (thrid == 0) return zaddGenericCommandLocal(fc->localReg, arg1, arg2, 0);
+//	else return 1;
+
+	// TODO: remove this!!!!
+	return Combine_fc(fc, thrid, INSERT, arg1, arg2);
+
 	u32 resp;
 	NodeRWLock_Dist_WLock(&(fc->rwlock), thrid);
 	resp = 	zaddGenericCommandLocal(fc->localReg, arg1, arg2, 0);
 	NodeRWLock_Dist_WUnlock(&(fc->rwlock), thrid);
 	return resp;
+
 #elif defined (SPINLOCK)	
 	u32 resp;
 	SpinLock_Lock(&(fc->spinlock));

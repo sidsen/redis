@@ -26,6 +26,8 @@
 #include <assert.h>
 #include <intrin.h>
 
+#include "czipf.h"
+
 #ifdef _MSC_VER
 
 //#define METHOD_REPLICATION
@@ -46,7 +48,7 @@ CONFIGURATION
 #undef RWL
 #endif
 
-#if 1
+#if 0
 #define SPINLOCK
 #else
 #undef SPINLOCK

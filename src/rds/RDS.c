@@ -941,6 +941,8 @@ inline void NodeReplica_OPTR_Init(NodeReplica_OPTR *nr) {
 	nr->threadCnt = 0;
 	NodeRWLock_Dist_Init(&(nr->lock), NUM_THREADS_PER_NODE);
 	for (i = 0; i < NUM_THREADS_PER_NODE; ++i) nr->slot[i].op = EMPTY;
+
+	nr->_Zgenerator = zipfInit(200000, 1, 1);
 }
 
 
@@ -1016,6 +1018,9 @@ void RDS_SetReplicaThreadCounts(RDS *rds) {
 u32 RDS_contains(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 	//printf("\n-----------------> CONTAINS %d\n", thrid);
 	//SharedLog_Print(&rds->sharedLog);
+
+	//arg1 = (zipfGetIndex(rds->local[rds->leader[thrid].val].replica->_Zgenerator) + arg1/2) % arg1;
+
 	return CombineReads(rds, thrid, CONTAINS, arg1, arg2);
 }
 
@@ -1026,6 +1031,9 @@ u32 RDS_insert(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 
 u32 RDS_incrby(RDS *rds, int thrid, u32 arg1, u32 arg2) {
 	//printf("\n-----------------> INSERT %d\n", thrid);
+
+	//arg2 = (zipfGetIndex(rds->local[rds->leader[thrid].val].replica->_Zgenerator) + arg2/2) % arg2;
+
 	return Combine(rds, thrid, INCRBY, arg1, arg2);
 }
 

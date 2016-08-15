@@ -1451,12 +1451,14 @@ void zaddGenericCommandReplFC(redisClient *c, int incr, int flat) {
 		//TODO:PERF USELESS AS STRTOL FUNC USED FAILS ON LEADING ZEROS
 		ele = c->argv[3 + j * 2]; // = tryObjectEncoding(c->argv[3 + j * 2]);
 		int success;
+		int randNum = ((ustime() << 16) | randLFSR()) % server.exp_keyrange;
+		//int randNum = server.exp_keyrange;
 		if (incr) {
 			if (fc) {
-				success = FC_incrby(fc, c->currthread, (u32)(score), ((ustime() << 16) | randLFSR()) % server.exp_keyrange);
+				success = FC_incrby(fc, c->currthread, (u32)(score), randNum);
 			}
 			else {
-				success = RDS_incrby(rds, c->currthread, (u32)(score), ((ustime() << 16) | randLFSR()) % server.exp_keyrange);
+				success = RDS_incrby(rds, c->currthread, (u32)(score), randNum);
 			}
 		}
 		else {
@@ -3152,12 +3154,14 @@ void zrankGenericCommandReplFC(redisClient *c, int reverse, int flat) {
 		double score;
 		
 		//TODO:PERF USELESS AS STRTOL FUNC USED FAILS ON LEADING ZEROS
-		ele = c->argv[2]; // = tryObjectEncoding(c->argv[2]);
+		ele = c->argv[2]; // = tryObjectEncoding(c->argv[2]);		
+		int randNum = ((ustime() << 16) | randLFSR()) % server.exp_keyrange;
+		//int randNum = server.exp_keyrange;
 		if (fc) {
-			rank = FC_contains(fc, c->currthread, ((ustime() << 16) | randLFSR()) % server.exp_keyrange, 0);
+			rank = FC_contains(fc, c->currthread, randNum, 0);
 		}
 		else {
-			rank = RDS_contains(rds, c->currthread, ((ustime() << 16) | randLFSR()) % server.exp_keyrange, 0);
+			rank = RDS_contains(rds, c->currthread, randNum, 0);
 		}
 		if (c->noReply) {
 			return;
