@@ -115,7 +115,7 @@ void zslFree(zskiplist *zsl) {
  * levels are less likely to be returned. */
 int zslRandomLevel(void) {
     int level = 1;
-    while ((randLFSR()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
+    while ((prng_next()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
         level += 1;
     return (level<ZSKIPLIST_MAXLEVEL) ? level : ZSKIPLIST_MAXLEVEL;
 }
@@ -1455,10 +1455,17 @@ void zaddGenericCommandReplFC(redisClient *c, int incr, int flat) {
 		//int randNum = server.exp_keyrange;
 		if (incr) {
 			if (fc) {
+<<<<<<< HEAD
 				success = FC_incrby(fc, c->currthread, (u32)(score), randNum);
 			}
 			else {
 				success = RDS_incrby(rds, c->currthread, (u32)(score), randNum);
+=======
+				success = FC_incrby(fc, c->currthread, (u32)(score), prng_next() % server.exp_keyrange);
+			}
+			else {
+				success = RDS_incrby(rds, c->currthread, (u32)(score), prng_next() % server.exp_keyrange);
+>>>>>>> 1b6b8315c95e98e3ff752022aac4366df8dd660d
 			}
 		}
 		else {
@@ -3158,10 +3165,17 @@ void zrankGenericCommandReplFC(redisClient *c, int reverse, int flat) {
 		int randNum = ((ustime() << 16) | randLFSR()) % server.exp_keyrange;
 		//int randNum = server.exp_keyrange;
 		if (fc) {
+<<<<<<< HEAD
 			rank = FC_contains(fc, c->currthread, randNum, 0);
 		}
 		else {
 			rank = RDS_contains(rds, c->currthread, randNum, 0);
+=======
+			rank = FC_contains(fc, c->currthread, prng_next() % server.exp_keyrange, 0);
+		}
+		else {
+			rank = RDS_contains(rds, c->currthread, prng_next() % server.exp_keyrange, 0);
+>>>>>>> 1b6b8315c95e98e3ff752022aac4366df8dd660d
 		}
 		if (c->noReply) {
 			return;

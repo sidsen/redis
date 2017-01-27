@@ -76,6 +76,7 @@ typedef long long mstime_t; /* millisecond time type. */
 /* Concurrent data structure techniques we are experimenting with */
 #include "RDS.h"
 #include "fc.h"
+#include "c_prng.h"
 //extern struct RDS;
 
 #include "redisLog.h" /* moved logging for hiredis and RedisCli usage /*
