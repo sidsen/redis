@@ -213,6 +213,7 @@
     <ClCompile Include="..\src\rand.c" />
     <ClCompile Include="..\src\rdb.c" />
     <ClCompile Include="..\src\rds\czipf.cpp" />
+    <ClCompile Include="..\src\rds\c_prng.cpp" />
     <ClCompile Include="..\src\rds\fc.c" />
     <ClCompile Include="..\src\rds\RDS.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
@@ -261,6 +262,7 @@
     <ClInclude Include="..\src\rand.h" />
     <ClInclude Include="..\src\rdb.h" />
     <ClInclude Include="..\src\rds\czipf.h" />
+    <ClInclude Include="..\src\rds\c_prng.h" />
     <ClInclude Include="..\src\rds\fc.h" />
     <ClInclude Include="..\src\rds\RDS.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
