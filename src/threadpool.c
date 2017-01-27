@@ -299,7 +299,7 @@ static void *threadpool_thread(void *threadpool)
 	pinThread(thread_id % MAX_THREADS);
 	_tmreportprocessor(thread_id % MAX_THREADS);
 	/* Initialize the PRG; from here on just call prng_next() */
-	prng_new();
+	//prng_new();
 	/* The last thread is used for measurement and should not be associated with a replica */
 	if ((server.repl || server.flat) && (thread_id != server.threadpool_size - 1)) {
 		if (server.repl) {
@@ -350,7 +350,7 @@ static void *threadpool_thread(void *threadpool)
 
 	pthread_mutex_unlock(&(pool->lock));
 	//pthread_exit(NULL);
-	prng_delete();
+	//prng_delete();
 
 	return(NULL);
 }
